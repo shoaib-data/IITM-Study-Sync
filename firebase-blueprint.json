@@ -1,0 +1,143 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "IITM BS student user profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string", "description": "Student full name" },
+        "email": { "type": "string", "description": "Student email address" },
+        "photoURL": { "type": "string", "description": "Profile picture URL" },
+        "friendCode": { "type": "string", "description": "Unique 6-character uppercase alphanumeric code", "minLength": 6, "maxLength": 6 },
+        "friends": { "type": "array", "description": "Array of connected friend UIDs" },
+        "activeTermId": { "type": "string", "description": "ID of currently active term" },
+        "level": {
+          "type": "string",
+          "enum": ["Foundation", "Diploma in Programming", "Diploma in Data Science", "Degree"],
+          "description": "Current academic level"
+        },
+        "isAdmin": { "type": "boolean", "description": "True only for hardcoded admin email" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp" }
+      },
+      "required": ["uid", "name", "email", "friendCode", "level", "isAdmin"]
+    },
+    "CourseCatalog": {
+      "title": "CourseCatalog",
+      "description": "Official IITM BS course catalog entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Course identifier" },
+        "name": { "type": "string", "description": "Official course name" },
+        "level": {
+          "type": "string",
+          "enum": ["Foundation", "Diploma in Programming", "Diploma in Data Science", "Degree"]
+        },
+        "assessmentType": {
+          "type": "string",
+          "enum": ["exam", "project"]
+        },
+        "examComponents": {
+          "type": "object",
+          "description": "Exam structure: quiz1, quiz2, endTerm, oppeCount (0, 1, or 2)"
+        },
+        "projectComponents": {
+          "type": "object",
+          "description": "Project structure: hasProjectSubmission, hasViva"
+        },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "level", "assessmentType"]
+    },
+    "CalendarTerm": {
+      "title": "CalendarTerm",
+      "description": "Global academic calendar cycle dates",
+      "type": "object",
+      "properties": {
+        "termId": { "type": "string", "description": "Term cycle identifier e.g. Sep2026" },
+        "cycleType": { "type": "string", "enum": ["Jan", "May", "Sep"] },
+        "startDate": { "type": "string", "description": "Term start date YYYY-MM-DD" },
+        "quiz1Date": { "type": "string", "description": "Quiz 1 exam date YYYY-MM-DD" },
+        "quiz2Date": { "type": "string", "description": "Quiz 2 exam date YYYY-MM-DD" },
+        "endTermDate": { "type": "string", "description": "End term exam date YYYY-MM-DD" },
+        "oppe1Window": { "type": "object", "description": "{ start: string, end: string }" },
+        "oppe2Window": { "type": "object", "description": "{ start: string, end: string }" },
+        "lastScrapedAt": { "type": "string", "description": "ISO timestamp of last sync" },
+        "syncStatus": { "type": "string", "enum": ["ok", "failed"] },
+        "rawResponse": { "type": "string", "description": "Raw scraping response on failure" }
+      },
+      "required": ["termId", "cycleType", "startDate", "quiz1Date", "quiz2Date", "endTermDate", "syncStatus"]
+    },
+    "UserTerm": {
+      "title": "UserTerm",
+      "description": "Student registered academic term",
+      "type": "object",
+      "properties": {
+        "termId": { "type": "string", "description": "Calendar term ID reference e.g. Sep2026" },
+        "termName": { "type": "string", "description": "Display name e.g. September 2026" },
+        "isActive": { "type": "boolean", "description": "Active term flag; archived terms have false" },
+        "calendarId": { "type": "string", "description": "Reference to calendar document" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["termId", "isActive", "calendarId"]
+    },
+    "UserCourse": {
+      "title": "UserCourse",
+      "description": "Enrolled course in student term",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string", "description": "Catalog course reference ID" },
+        "name": { "type": "string", "description": "Course name" },
+        "level": { "type": "string" },
+        "assessmentType": { "type": "string", "enum": ["exam", "project"] },
+        "color": { "type": "string", "description": "Visual accent color hex" },
+        "scores": { "type": "object", "description": "Component scores map" },
+        "weeklyProgress": { "type": "object", "description": "week1 through week12 progress map" }
+      },
+      "required": ["courseId", "name", "assessmentType", "weeklyProgress"]
+    },
+    "FriendRequest": {
+      "title": "FriendRequest",
+      "description": "Consent-based friend request",
+      "type": "object",
+      "properties": {
+        "fromUid": { "type": "string" },
+        "toUid": { "type": "string" },
+        "fromName": { "type": "string" },
+        "fromEmail": { "type": "string" },
+        "fromPhotoURL": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["fromUid", "toUid", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profile with friend code and active term reference"
+    },
+    "/courseCatalog/{courseId}": {
+      "schema": { "$ref": "#/entities/CourseCatalog" },
+      "description": "Admin-managed official IITM BS course catalog"
+    },
+    "/calendar/{termId}": {
+      "schema": { "$ref": "#/entities/CalendarTerm" },
+      "description": "Automated and admin-managed academic calendar dates"
+    },
+    "/users/{uid}/terms/{termId}": {
+      "schema": { "$ref": "#/entities/UserTerm" },
+      "description": "Per-user registered terms"
+    },
+    "/users/{uid}/terms/{termId}/courses/{courseId}": {
+      "schema": { "$ref": "#/entities/UserCourse" },
+      "description": "Student weekly progress and scores per course"
+    },
+    "/friendRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/FriendRequest" },
+      "description": "Pending and resolved friend requests"
+    }
+  }
+}

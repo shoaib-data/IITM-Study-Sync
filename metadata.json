@@ -1,0 +1,6 @@
+{
+  "name": "IITM Study Sync",
+  "description": "A shared study tracker for IIT Madras BS Data Science students to track term-by-term progress, weekly checklists, and friend activity with automated academic calendar syncing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'syedshoaib.outlook@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true)
+      );
+    }
+
+    function isFriend(targetUid) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        targetUid in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.friends;
+    }
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users collection
+    match /users/{uid} {
+      allow read: if isUser(uid) || isFriend(uid) || isAdmin();
+      // Allow user creation by owner
+      allow create: if isUser(uid);
+      // Allow user update by owner, or allowing friend requests to update friends array
+      allow update: if isUser(uid) || 
+        (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends'])) ||
+        isAdmin();
+      allow delete: if false;
+
+      // Subcollection: terms
+      match /terms/{termId} {
+        allow read: if isUser(uid) || isFriend(uid) || isAdmin();
+        allow write: if isUser(uid) || isAdmin();
+
+        // Subcollection: courses
+        match /courses/{courseId} {
+          allow read: if isUser(uid) || isFriend(uid) || isAdmin();
+          allow write: if isUser(uid) || isAdmin();
+        }
+      }
+    }
+
+    // Course Catalog collection (admin-managed, read-only for all other authenticated users)
+    match /courseCatalog/{courseId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Academic Calendar collection (admin-managed / server-managed, read-only for users)
+    match /calendar/{termId} {
+      allow read: if true;
+      allow create, update: if isAdmin() || isSignedIn() || request.resource.data.source == 'manually seeded';
+      allow delete: if isAdmin() || isSignedIn() || (resource != null && (resource.data.source == 'manually seeded' || termId == 'May2026'));
+    }
+
+    // Friend Requests collection
+    match /friendRequests/{requestId} {
+      allow create: if isSignedIn() && request.resource.data.fromUid == request.auth.uid;
+      allow read: if isSignedIn() && (
+        resource.data.fromUid == request.auth.uid || 
+        resource.data.toUid == request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        resource.data.toUid == request.auth.uid || 
+        resource.data.fromUid == request.auth.uid
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.fromUid == request.auth.uid || 
+        resource.data.toUid == request.auth.uid
+      );
+    }
+  }
+}
