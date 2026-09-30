@@ -3,6 +3,7 @@ import {
   subscribeTrafficSummary,
   subscribeTrafficLogs,
   recordPageView,
+  resetTrafficToZero,
   resetAndSeedTrafficData,
 } from '../lib/trafficService';
 import { TrafficSummary, TrafficLogEntry, DailyTrafficMetric } from '../types';
@@ -24,6 +25,7 @@ import {
   Clock,
   Shield,
   Zap,
+  RotateCcw,
 } from 'lucide-react';
 
 export const TrafficViewerView: React.FC = () => {
@@ -71,14 +73,14 @@ export const TrafficViewerView: React.FC = () => {
     }
   };
 
-  const handleResetData = async () => {
-    if (!confirm('Re-seed traffic analytics with updated baseline data spanning the last 14 days?')) {
+  const handleResetToZero = async () => {
+    if (!confirm('Reset traffic analytics to 0 real visits? All counters and historical baselines will be set to zero.')) {
       return;
     }
     setIsResetting(true);
     try {
-      await resetAndSeedTrafficData();
-      setFeedback('Traffic analytics baseline successfully initialized!');
+      await resetTrafficToZero();
+      setFeedback('Traffic analytics counters successfully reset to 0 real visits!');
       setTimeout(() => setFeedback(null), 3000);
     } catch (err) {
       console.error(err);
@@ -124,11 +126,11 @@ export const TrafficViewerView: React.FC = () => {
   const totalDeviceVisits =
     summary.deviceDistribution.desktop +
     summary.deviceDistribution.mobile +
-    summary.deviceDistribution.tablet || 1;
+    summary.deviceDistribution.tablet;
 
-  const desktopPct = Math.round((summary.deviceDistribution.desktop / totalDeviceVisits) * 100);
-  const mobilePct = Math.round((summary.deviceDistribution.mobile / totalDeviceVisits) * 100);
-  const tabletPct = Math.round((summary.deviceDistribution.tablet / totalDeviceVisits) * 100);
+  const desktopPct = totalDeviceVisits > 0 ? Math.round((summary.deviceDistribution.desktop / totalDeviceVisits) * 100) : 0;
+  const mobilePct = totalDeviceVisits > 0 ? Math.round((summary.deviceDistribution.mobile / totalDeviceVisits) * 100) : 0;
+  const tabletPct = totalDeviceVisits > 0 ? Math.round((summary.deviceDistribution.tablet / totalDeviceVisits) * 100) : 0;
 
   // Student vs Guest calculation
   const totalStudents = (Object.values(summary.dailyHistory || {}) as DailyTrafficMetric[]).reduce(
@@ -139,9 +141,9 @@ export const TrafficViewerView: React.FC = () => {
     (acc, d) => acc + (d.guestVisits || 0),
     0
   );
-  const totalAudience = totalStudents + totalGuests || 1;
-  const studentPct = Math.round((totalStudents / totalAudience) * 100);
-  const guestPct = 100 - studentPct;
+  const totalAudience = totalStudents + totalGuests;
+  const studentPct = totalAudience > 0 ? Math.round((totalStudents / totalAudience) * 100) : 0;
+  const guestPct = totalAudience > 0 ? 100 - studentPct : 0;
 
   return (
     <div className="space-y-6">
@@ -183,16 +185,16 @@ export const TrafficViewerView: React.FC = () => {
               </button>
             </div>
 
-            {/* Seed / Reset Data */}
+            {/* Reset to 0 Data */}
             <button
               id="traffic-reset-btn"
               disabled={isResetting}
-              onClick={handleResetData}
+              onClick={handleResetToZero}
               className="px-3 py-1.5 text-xs font-medium rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 flex items-center gap-1.5 transition-colors"
-              title="Re-seed 14-day historical trend data"
+              title="Reset all traffic analytics counters to zero"
             >
-              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Seed Baseline</span>
+              <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
+              <span>Reset to 0</span>
             </button>
 
             {/* Export JSON */}
@@ -228,7 +230,7 @@ export const TrafficViewerView: React.FC = () => {
           </div>
           <div className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-medium">
             <ArrowUpRight className="w-3.5 h-3.5" />
-            <span>+18.4% this academic term</span>
+            <span>Pure real visitor tracking</span>
           </div>
         </div>
 
@@ -267,7 +269,7 @@ export const TrafficViewerView: React.FC = () => {
             <Activity className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
-            <span>{Math.max(1, summary.activeSessions || 5)}</span>
+            <span>{Math.max(1, summary.activeSessions || 1)}</span>
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
           </div>
           <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
@@ -319,7 +321,8 @@ export const TrafficViewerView: React.FC = () => {
         <div className="pt-4">
           <div className="h-52 flex items-end gap-2 sm:gap-3 border-b border-zinc-200 dark:border-zinc-800 pb-2 px-1">
             {displayHistory.map((metric) => {
-              const heightPct = Math.max(12, Math.round((metric.totalVisits / maxDailyVisits) * 100));
+              const hasVisits = metric.totalVisits > 0;
+              const heightPct = hasVisits ? Math.max(10, Math.round((metric.totalVisits / maxDailyVisits) * 100)) : 3;
               const dateObj = new Date(metric.date + 'T12:00:00Z');
               const dayName = dateObj.toLocaleDateString(undefined, { weekday: 'short' });
               const dayNum = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -338,30 +341,36 @@ export const TrafficViewerView: React.FC = () => {
 
                   {/* Bar */}
                   <div className="w-full max-w-[48px] flex flex-col justify-end items-center rounded-t-md overflow-hidden bg-zinc-100 dark:bg-zinc-800" style={{ height: `${heightPct}%` }}>
-                    {/* Guest segment */}
-                    <div
-                      className="w-full bg-blue-400 dark:bg-blue-500"
-                      style={{
-                        height: `${Math.round(
-                          (metric.guestVisits / (metric.totalVisits || 1)) * 100
-                        )}%`,
-                      }}
-                      title={`Guests: ${metric.guestVisits}`}
-                    />
-                    {/* Student segment */}
-                    <div
-                      className={`w-full ${
-                        isToday
-                          ? 'bg-emerald-600 dark:bg-emerald-500'
-                          : 'bg-zinc-800 dark:bg-zinc-300 group-hover:bg-zinc-900 dark:group-hover:bg-white'
-                      } transition-colors`}
-                      style={{
-                        height: `${Math.round(
-                          (metric.studentVisits / (metric.totalVisits || 1)) * 100
-                        )}%`,
-                      }}
-                      title={`Students: ${metric.studentVisits}`}
-                    />
+                    {hasVisits ? (
+                      <>
+                        {/* Guest segment */}
+                        <div
+                          className="w-full bg-blue-400 dark:bg-blue-500"
+                          style={{
+                            height: `${Math.round(
+                              (metric.guestVisits / (metric.totalVisits || 1)) * 100
+                            )}%`,
+                          }}
+                          title={`Guests: ${metric.guestVisits}`}
+                        />
+                        {/* Student segment */}
+                        <div
+                          className={`w-full ${
+                            isToday
+                              ? 'bg-emerald-600 dark:bg-emerald-500'
+                              : 'bg-zinc-800 dark:bg-zinc-300 group-hover:bg-zinc-900 dark:group-hover:bg-white'
+                          } transition-colors`}
+                          style={{
+                            height: `${Math.round(
+                              (metric.studentVisits / (metric.totalVisits || 1)) * 100
+                            )}%`,
+                          }}
+                          title={`Students: ${metric.studentVisits}`}
+                        />
+                      </>
+                    ) : (
+                      <div className="w-full h-1 bg-zinc-200 dark:bg-zinc-700/60 rounded-t-xs" />
+                    )}
                   </div>
 
                   {/* Day Label */}
@@ -516,8 +525,8 @@ export const TrafficViewerView: React.FC = () => {
               Top Browsers
             </span>
             <div className="grid grid-cols-2 gap-2 text-xs">
-              {Object.entries(summary.browserDistribution || { Chrome: 1420, Firefox: 310, Safari: 245, Edge: 130 }).map(
-                ([bName, bCount]) => (
+              {Object.entries(summary.browserDistribution || {}).length > 0 ? (
+                Object.entries(summary.browserDistribution || {}).map(([bName, bCount]) => (
                   <div
                     key={bName}
                     className="p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/60 flex items-center justify-between"
@@ -525,7 +534,11 @@ export const TrafficViewerView: React.FC = () => {
                     <span className="text-zinc-700 dark:text-zinc-300 font-medium">{bName}</span>
                     <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{bCount}</span>
                   </div>
-                )
+                ))
+              ) : (
+                <div className="col-span-2 py-2 text-center text-[11px] text-zinc-400">
+                  No browser visits recorded yet
+                </div>
               )}
             </div>
           </div>
@@ -544,21 +557,14 @@ export const TrafficViewerView: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            {Object.entries(
-              summary.levelDistribution || {
-                Foundation: 950,
-                'Diploma in Programming': 580,
-                'Diploma in Data Science': 420,
-                Degree: 155,
-              }
-            ).map(([lvl, countVal]) => {
-              const count = countVal as number;
+            {Object.entries(summary.levelDistribution || {}).map(([lvl, countVal]) => {
+              const count = Number(countVal) || 0;
               const totalLvl =
-                Object.values(summary.levelDistribution || {}).reduce(
-                  (a, b) => (a as number) + (b as number),
+                Object.values(summary.levelDistribution || {}).reduce<number>(
+                  (a, b) => a + (Number(b) || 0),
                   0
-                ) || 1;
-              const lvlPct = Math.round((count / (totalLvl as number)) * 100);
+                );
+              const lvlPct = totalLvl > 0 ? Math.round((count / totalLvl) * 100) : 0;
               return (
                 <div key={lvl} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
@@ -631,64 +637,74 @@ export const TrafficViewerView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-              {logs.map((log) => {
-                const dateObj = new Date(log.timestamp);
-                const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                return (
-                  <tr key={log.id} className="hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40 transition-colors">
-                    <td className="px-4 py-2.5 font-mono text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                      {timeStr}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {log.isGuest ? (
-                        <div className="flex items-center gap-1.5">
-                          <Globe className="w-3.5 h-3.5 text-zinc-400" />
-                          <span className="text-zinc-600 dark:text-zinc-400 font-mono text-[11px]">
-                            {log.visitorId.slice(0, 10)} (Guest)
-                          </span>
-                        </div>
-                      ) : (
-                        <div>
-                          <div className="font-semibold text-zinc-900 dark:text-zinc-100">
-                            {log.userName || 'IITM Student'}
+              {logs.length > 0 ? (
+                logs.map((log) => {
+                  const dateObj = new Date(log.timestamp);
+                  const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                  return (
+                    <tr key={log.id} className="hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40 transition-colors">
+                      <td className="px-4 py-2.5 font-mono text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                        {timeStr}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {log.isGuest ? (
+                          <div className="flex items-center gap-1.5">
+                            <Globe className="w-3.5 h-3.5 text-zinc-400" />
+                            <span className="text-zinc-600 dark:text-zinc-400 font-mono text-[11px]">
+                              {log.visitorId.slice(0, 10)} (Guest)
+                            </span>
                           </div>
-                          <div className="text-[10px] text-zinc-400 font-mono">{log.userEmail}</div>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium">
-                        {log.page}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap">
-                      <div className="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
-                        {log.device === 'desktop' ? (
-                          <Monitor className="w-3.5 h-3.5 text-zinc-500" />
-                        ) : log.device === 'mobile' ? (
-                          <Smartphone className="w-3.5 h-3.5 text-zinc-500" />
                         ) : (
-                          <Tablet className="w-3.5 h-3.5 text-zinc-500" />
+                          <div>
+                            <div className="font-semibold text-zinc-900 dark:text-zinc-100">
+                              {log.userName || 'IITM Student'}
+                            </div>
+                            <div className="text-[10px] text-zinc-400 font-mono">{log.userEmail}</div>
+                          </div>
                         )}
-                        <span className="capitalize">{log.device}</span>
-                        <span className="text-zinc-400">&bull;</span>
-                        <span>{log.browser}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {log.isGuest ? (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                          Guest
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium">
+                          {log.page}
                         </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                          {log.userLevel || 'Student'}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <div className="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
+                          {log.device === 'desktop' ? (
+                            <Monitor className="w-3.5 h-3.5 text-zinc-500" />
+                          ) : log.device === 'mobile' ? (
+                            <Smartphone className="w-3.5 h-3.5 text-zinc-500" />
+                          ) : (
+                            <Tablet className="w-3.5 h-3.5 text-zinc-500" />
+                          )}
+                          <span className="capitalize">{log.device}</span>
+                          <span className="text-zinc-400">&bull;</span>
+                          <span>{log.browser}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {log.isGuest ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                            Guest
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                            {log.userLevel || 'Student'}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-zinc-500 dark:text-zinc-400">
+                    <Activity className="w-6 h-6 mx-auto mb-2 text-zinc-400 opacity-60" />
+                    <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">No visitor sessions recorded yet</p>
+                    <p className="text-[11px] text-zinc-400 mt-1">Real student page visits and guest traffic will appear here automatically in real time.</p>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

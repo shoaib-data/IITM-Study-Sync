@@ -82,7 +82,64 @@ export function detectOS(): string {
 }
 
 /**
- * Generates initial rich historical analytics spanning the last 14 days
+ * Generates an initial clean zero baseline spanning the last 14 days
+ */
+export function getZeroTrafficSummary(): TrafficSummary {
+  const history: Record<string, DailyTrafficMetric> = {};
+  const today = new Date();
+
+  // Create date buckets for the last 14 days initialized at 0 visits
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+
+    history[dateStr] = {
+      date: dateStr,
+      totalVisits: 0,
+      uniqueVisitors: 0,
+      studentVisits: 0,
+      guestVisits: 0,
+      pageViews: {},
+    };
+  }
+
+  return {
+    totalVisits: 0,
+    uniqueVisitors: 0,
+    todayVisits: 0,
+    activeSessions: 1, // Current active viewer
+    pageViews: {
+      Dashboard: 0,
+      'My Term': 0,
+      'Course History': 0,
+      Friends: 0,
+      'Start New Term': 0,
+    },
+    deviceDistribution: {
+      desktop: 0,
+      mobile: 0,
+      tablet: 0,
+    },
+    browserDistribution: {
+      Chrome: 0,
+      Firefox: 0,
+      Safari: 0,
+      Edge: 0,
+    },
+    levelDistribution: {
+      Foundation: 0,
+      'Diploma in Programming': 0,
+      'Diploma in Data Science': 0,
+      Degree: 0,
+    },
+    dailyHistory: history,
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
+/**
+ * Optional seed generator for mock test environments
  */
 export function generateSeedHistoricalMetrics(): Record<string, DailyTrafficMetric> {
   const history: Record<string, DailyTrafficMetric> = {};
@@ -92,9 +149,8 @@ export function generateSeedHistoricalMetrics(): Record<string, DailyTrafficMetr
     const d = new Date(today);
     d.setDate(today.getDate() - i);
     const dateStr = d.toISOString().split('T')[0];
-    const dayOfWeek = d.getDay(); // 0 is Sunday
+    const dayOfWeek = d.getDay();
 
-    // Sunday (assignment deadlines) and Thursdays (quiz prep) have higher volume
     const baseVisits = dayOfWeek === 0 ? 165 : dayOfWeek === 4 ? 140 : 85 + Math.floor(Math.sin(i) * 30);
     const visits = Math.max(45, baseVisits + Math.floor(Math.random() * 25));
     const unique = Math.round(visits * 0.62);
@@ -128,7 +184,7 @@ export function generateSeedTrafficSummary(): TrafficSummary {
 
   Object.values(dailyHistory).forEach((d) => {
     totalVisits += d.totalVisits;
-    uniqueVisitors += Math.round(d.uniqueVisitors * 0.65); // account for repeat visitors
+    uniqueVisitors += Math.round(d.uniqueVisitors * 0.65);
   });
 
   return {
@@ -218,10 +274,20 @@ export async function recordPageView(options: {
     const summaryDocRef = doc(db, 'siteTraffic', 'summary');
     const summarySnap = await getDoc(summaryDocRef);
 
+    const isFirstTimeVisitor = typeof window !== 'undefined' && !localStorage.getItem('iitm_visitor_tracked');
+    if (isFirstTimeVisitor && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('iitm_visitor_tracked', 'true');
+      } catch {
+        // ignore localStorage access issues
+      }
+    }
+
     if (!summarySnap.exists()) {
-      const initial = generateSeedTrafficSummary();
-      initial.totalVisits += 1;
-      initial.todayVisits += 1;
+      const initial = getZeroTrafficSummary();
+      initial.totalVisits = 1;
+      initial.todayVisits = 1;
+      initial.uniqueVisitors = 1;
       initial.lastUpdated = new Date().toISOString();
       if (!initial.dailyHistory[todayStr]) {
         initial.dailyHistory[todayStr] = {
@@ -230,17 +296,25 @@ export async function recordPageView(options: {
           uniqueVisitors: 1,
           guestVisits: isGuest ? 1 : 0,
           studentVisits: isGuest ? 0 : 1,
+          pageViews: { [options.page]: 1 },
         };
       } else {
-        initial.dailyHistory[todayStr].totalVisits += 1;
+        initial.dailyHistory[todayStr].totalVisits = 1;
+        initial.dailyHistory[todayStr].uniqueVisitors = 1;
         if (isGuest) {
-          initial.dailyHistory[todayStr].guestVisits += 1;
+          initial.dailyHistory[todayStr].guestVisits = 1;
         } else {
-          initial.dailyHistory[todayStr].studentVisits += 1;
+          initial.dailyHistory[todayStr].studentVisits = 1;
         }
+        initial.dailyHistory[todayStr].pageViews = { [options.page]: 1 };
       }
-      initial.pageViews[options.page] = (initial.pageViews[options.page] || 0) + 1;
-      initial.deviceDistribution[device] = (initial.deviceDistribution[device] || 0) + 1;
+      initial.pageViews[options.page] = 1;
+      initial.deviceDistribution[device] = 1;
+      initial.browserDistribution[browser] = (initial.browserDistribution[browser] || 0) + 1;
+      if (options.userProfile?.level) {
+        initial.levelDistribution[options.userProfile.level] =
+          (initial.levelDistribution[options.userProfile.level] || 0) + 1;
+      }
 
       await setDoc(summaryDocRef, removeUndefinedFields(initial));
     } else {
@@ -248,6 +322,7 @@ export async function recordPageView(options: {
       await updateDoc(summaryDocRef, {
         totalVisits: increment(1),
         todayVisits: increment(1),
+        ...(isFirstTimeVisitor ? { uniqueVisitors: increment(1) } : {}),
         [`pageViews.${options.page}`]: increment(1),
         [`deviceDistribution.${device}`]: increment(1),
         [`browserDistribution.${browser}`]: increment(1),
@@ -280,8 +355,8 @@ export function subscribeTrafficSummary(
         const data = snap.data() as TrafficSummary;
         callback(data);
       } else {
-        // Initialize default populated summary
-        const initial = generateSeedTrafficSummary();
+        // Initialize default clean zero summary
+        const initial = getZeroTrafficSummary();
         callback(initial);
         try {
           await setDoc(summaryDocRef, removeUndefinedFields(initial));
@@ -292,8 +367,8 @@ export function subscribeTrafficSummary(
     },
     (err) => {
       console.warn('[Traffic Tracker] Snapshot warning:', err);
-      // provide local fallback so admin view never crashes
-      callback(generateSeedTrafficSummary());
+      // provide local clean zero fallback so admin view never crashes
+      callback(getZeroTrafficSummary());
     }
   );
 
@@ -323,8 +398,7 @@ export function subscribeTrafficLogs(
     },
     (err) => {
       console.warn('[Traffic Tracker] Logs subscription warning:', err);
-      // provide fallback mock recent logs so the feed is never empty
-      callback(generateFallbackRecentLogs());
+      callback([]);
     }
   );
 
@@ -332,7 +406,16 @@ export function subscribeTrafficLogs(
 }
 
 /**
- * Reset / Seed realistic baseline analytics
+ * Reset traffic data to clean zero baseline (Pure Real Traffic)
+ */
+export async function resetTrafficToZero(): Promise<void> {
+  const summaryDocRef = doc(db, 'siteTraffic', 'summary');
+  const fresh = getZeroTrafficSummary();
+  await setDoc(summaryDocRef, removeUndefinedFields(fresh));
+}
+
+/**
+ * Optional: Reset / Seed realistic baseline analytics (demo mode)
  */
 export async function resetAndSeedTrafficData(): Promise<void> {
   const summaryDocRef = doc(db, 'siteTraffic', 'summary');
@@ -341,37 +424,8 @@ export async function resetAndSeedTrafficData(): Promise<void> {
 }
 
 /**
- * Fallback recent logs for immediate display
+ * Fallback recent logs (empty by default for real analytics)
  */
 export function generateFallbackRecentLogs(): TrafficLogEntry[] {
-  const pages = ['Dashboard', 'My Term', 'Course History', 'Friends', 'Start New Term', 'Admin Console'];
-  const devices: ('desktop' | 'mobile' | 'tablet')[] = ['desktop', 'desktop', 'mobile', 'tablet'];
-  const browsers = ['Chrome', 'Firefox', 'Safari', 'Edge'];
-  const levels = ['Foundation', 'Diploma in Programming', 'Diploma in Data Science', 'Degree'];
-  const logs: TrafficLogEntry[] = [];
-  const now = Date.now();
-
-  for (let i = 0; i < 15; i++) {
-    const isGuest = i % 4 === 0;
-    const timeOffset = i * 2.5 * 60 * 1000 + Math.floor(Math.random() * 30000);
-    const date = new Date(now - timeOffset);
-    logs.push({
-      id: `log_demo_${i}`,
-      timestamp: date.toISOString(),
-      page: pages[i % pages.length],
-      path: `/${pages[i % pages.length].toLowerCase().replace(/\s+/g, '-')}`,
-      visitorId: `v_${(1000 + i * 37).toString(36)}`,
-      userId: isGuest ? undefined : `user_std_${i}`,
-      userName: isGuest ? undefined : `Student #${101 + i}`,
-      userEmail: isGuest ? undefined : `22ds${1000 + i}@ds.study.iitm.ac.in`,
-      userLevel: isGuest ? undefined : levels[i % levels.length],
-      isGuest,
-      device: devices[i % devices.length],
-      browser: browsers[i % browsers.length],
-      os: 'Windows 11',
-      referrer: i % 2 === 0 ? 'Direct Visit' : 'https://study.iitm.ac.in/portal',
-    });
-  }
-
-  return logs;
+  return [];
 }
