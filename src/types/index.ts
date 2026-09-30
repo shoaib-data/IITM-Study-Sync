@@ -133,3 +133,46 @@ export interface FriendSummary {
   completedItemsCount?: number;
   totalItemsCount?: number;
 }
+
+export interface TrafficLogEntry {
+  id: string;
+  timestamp: string; // ISO string
+  page: string;
+  path: string;
+  visitorId: string;
+  userId?: string;
+  userName?: string;
+  userEmail?: string;
+  userLevel?: string;
+  isGuest: boolean;
+  device: 'desktop' | 'mobile' | 'tablet';
+  browser: string;
+  os: string;
+  referrer?: string;
+}
+
+export interface DailyTrafficMetric {
+  date: string; // YYYY-MM-DD
+  totalVisits: number;
+  uniqueVisitors: number;
+  guestVisits: number;
+  studentVisits: number;
+  pageViews?: Record<string, number>;
+}
+
+export interface TrafficSummary {
+  totalVisits: number;
+  uniqueVisitors: number;
+  todayVisits: number;
+  activeSessions: number;
+  pageViews: Record<string, number>;
+  deviceDistribution: {
+    desktop: number;
+    mobile: number;
+    tablet: number;
+  };
+  browserDistribution?: Record<string, number>;
+  levelDistribution?: Record<string, number>;
+  dailyHistory: Record<string, DailyTrafficMetric>;
+  lastUpdated: string;
+}

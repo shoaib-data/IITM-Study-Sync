@@ -112,9 +112,47 @@
         "createdAt": { "type": "string" }
       },
       "required": ["fromUid", "toUid", "status", "createdAt"]
+    },
+    "SiteTrafficSummary": {
+      "title": "SiteTrafficSummary",
+      "description": "Aggregated site visitor and traffic counters for admin viewer",
+      "type": "object",
+      "properties": {
+        "totalVisits": { "type": "number" },
+        "uniqueVisitors": { "type": "number" },
+        "todayVisits": { "type": "number" },
+        "activeSessions": { "type": "number" },
+        "pageViews": { "type": "object" },
+        "deviceDistribution": { "type": "object" },
+        "dailyHistory": { "type": "object" },
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["totalVisits", "lastUpdated"]
+    },
+    "TrafficLog": {
+      "title": "TrafficLog",
+      "description": "Real-time individual visitor hit entry for admin live stream",
+      "type": "object",
+      "properties": {
+        "timestamp": { "type": "string" },
+        "page": { "type": "string" },
+        "visitorId": { "type": "string" },
+        "isGuest": { "type": "boolean" },
+        "device": { "type": "string" },
+        "browser": { "type": "string" }
+      },
+      "required": ["timestamp", "page", "visitorId"]
     }
   },
   "firestore": {
+    "/siteTraffic/{docId}": {
+      "schema": { "$ref": "#/entities/SiteTrafficSummary" },
+      "description": "Aggregate traffic summary and daily analytics metrics"
+    },
+    "/trafficLogs/{logId}": {
+      "schema": { "$ref": "#/entities/TrafficLog" },
+      "description": "Live traffic activity logs"
+    },
     "/users/{uid}": {
       "schema": { "$ref": "#/entities/User" },
       "description": "User profile with friend code and active term reference"
