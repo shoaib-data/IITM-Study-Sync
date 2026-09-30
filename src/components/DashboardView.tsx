@@ -11,6 +11,8 @@ import {
 import { UserTerm, UserCourse, CalendarTerm, UserProfile } from '../types';
 import { calculateTermWeek, formatDateString } from '../lib/dateUtils';
 import { ChecklistIconToggle } from './ChecklistIconToggle';
+import { CourseActionMenu } from './CourseActionMenu';
+import { ReplaceCourseModal } from './ReplaceCourseModal';
 import {
   Calendar as CalendarIcon,
   ChevronRight,
@@ -52,6 +54,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [calendarTerms, setCalendarTerms] = useState<CalendarTerm[]>([]);
   const [friendsProgress, setFriendsProgress] = useState<FriendProgressSummary[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(false);
+  const [courseToReplace, setCourseToReplace] = useState<UserCourse | null>(null);
 
   // Subscribe to user terms
   useEffect(() => {
@@ -126,6 +129,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 );
                 coursesSnap.forEach((docSnap) => {
                   const courseData = docSnap.data() as UserCourse;
+                  if (courseData.status === 'dropped') return;
                   if (courseData.weeklyProgress) {
                     Object.values(courseData.weeklyProgress).forEach((wp) => {
                       total += 3;
@@ -338,8 +342,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         </div>
                       </div>
 
-                      {/* 3 Checklist Icons: Assignment / Practice / Notes */}
-                      <div className="flex items-center gap-3 pl-2 sm:pl-0 self-end sm:self-center">
+                      {/* 3 Checklist Icons: Assignment / Practice / Notes + Course Action Menu */}
+                      <div className="flex items-center gap-2.5 pl-2 sm:pl-0 self-end sm:self-center">
                         <div className="flex items-center gap-2 bg-zinc-50/80 dark:bg-zinc-800/80 p-1.5 rounded-lg border border-zinc-100 dark:border-zinc-700/60">
                           {/* 1. Assignment */}
                           <div className="text-center">
@@ -392,6 +396,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             <div className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1 font-medium">Note</div>
                           </div>
                         </div>
+
+                        {/* Drop / Replace Course ⋮ Menu */}
+                        <CourseActionMenu
+                          course={course}
+                          termId={activeTerm.termId}
+                          onOpenReplaceModal={(c) => setCourseToReplace(c)}
+                        />
                       </div>
                     </div>
                   );
@@ -525,6 +536,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
           </div>
         </div>
+      )}
+
+      {/* Replace Course Modal */}
+      {activeTerm && (
+        <ReplaceCourseModal
+          isOpen={!!courseToReplace}
+          onClose={() => setCourseToReplace(null)}
+          courseToReplace={courseToReplace}
+          activeTermId={activeTerm.termId}
+          enrolledCourseIds={courses.map((c) => c.courseId)}
+        />
       )}
     </div>
   );

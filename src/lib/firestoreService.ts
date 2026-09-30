@@ -24,6 +24,8 @@ import {
   UserLevel,
   WeeklyChecklist,
   CourseScores,
+  FinalGrade,
+  AssessmentType,
 } from '../types';
 import { INITIAL_COURSE_CATALOG, INITIAL_CALENDAR_TERMS, COURSE_COLORS } from './constants';
 
@@ -353,7 +355,8 @@ export function subscribeUserTerms(uid: string, callback: (terms: UserTerm[]) =>
 export function subscribeUserCourses(
   uid: string,
   termId: string,
-  callback: (courses: UserCourse[]) => void
+  callback: (courses: UserCourse[]) => void,
+  includeDropped = false
 ) {
   const path = `users/${uid}/terms/${termId}/courses`;
   return onSnapshot(
@@ -361,7 +364,12 @@ export function subscribeUserCourses(
     (snap) => {
       const courses: UserCourse[] = [];
       snap.forEach((d) => {
-        courses.push({ id: d.id, ...(d.data() as Omit<UserCourse, 'id'>) });
+        const data = d.data() as Omit<UserCourse, 'id'>;
+        // Dropped courses are kept for audit/backend only; do not show in user-facing active term grids
+        if (!includeDropped && data.status === 'dropped') {
+          return;
+        }
+        courses.push({ id: d.id, ...data });
       });
       callback(courses);
     },
@@ -423,6 +431,8 @@ export async function startNewTerm(
         color: COURSE_COLORS[index % COURSE_COLORS.length],
         scores: {},
         weeklyProgress: defaultWeeklyProgress,
+        status: 'enrolled',
+        finalGrade: null,
       };
 
       if (catCourse.examComponents) {
@@ -446,6 +456,210 @@ export async function startNewTerm(
     return termId;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, userPath);
+  }
+}
+
+/**
+ * Drop a course from the active term.
+ * Keeps an internal audit record on the document (status: "dropped", droppedAt: timestamp)
+ * but it is completely removed from user-facing views.
+ */
+export async function dropUserCourse(
+  uid: string,
+  termId: string,
+  courseId: string
+): Promise<void> {
+  const path = `users/${uid}/terms/${termId}/courses/${courseId}`;
+  try {
+    const courseRef = doc(db, 'users', uid, 'terms', termId, 'courses', courseId);
+    await updateDoc(courseRef, removeUndefinedFields({
+      status: 'dropped',
+      droppedAt: new Date().toISOString(),
+    }));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, path);
+  }
+}
+
+/**
+ * Replace a course: marks the old course as dropped and adds the new course
+ * starting fresh with its own weekly progress grid from week 1.
+ */
+export async function replaceUserCourse(
+  uid: string,
+  termId: string,
+  oldCourseId: string,
+  newCourse: CourseCatalogItem,
+  existingColor?: string
+): Promise<void> {
+  const userPath = `users/${uid}`;
+  try {
+    const batch = writeBatch(db);
+
+    // 1. Drop old course
+    const oldCourseRef = doc(db, 'users', uid, 'terms', termId, 'courses', oldCourseId);
+    batch.update(oldCourseRef, removeUndefinedFields({
+      status: 'dropped',
+      droppedAt: new Date().toISOString(),
+    }));
+
+    // 2. Add new course starting fresh
+    const newCourseRef = doc(db, 'users', uid, 'terms', termId, 'courses', newCourse.id);
+    const defaultWeeklyProgress: Record<string, WeeklyChecklist> = {};
+    for (let w = 1; w <= 12; w++) {
+      defaultWeeklyProgress[`week${w}`] = {
+        assignmentSubmitted: false,
+        practiceQuestionsCompleted: false,
+        notesCreated: false,
+      };
+    }
+
+    const userCourseData: any = {
+      courseId: newCourse.id,
+      name: newCourse.name,
+      level: newCourse.level,
+      assessmentType: newCourse.assessmentType,
+      color: existingColor || COURSE_COLORS[Math.floor(Math.random() * COURSE_COLORS.length)],
+      scores: {},
+      weeklyProgress: defaultWeeklyProgress,
+      status: 'enrolled',
+      finalGrade: null,
+    };
+
+    if (newCourse.examComponents) {
+      userCourseData.examComponents = newCourse.examComponents;
+    }
+    if (newCourse.projectComponents) {
+      userCourseData.projectComponents = newCourse.projectComponents;
+    }
+
+    batch.set(newCourseRef, removeUndefinedFields(userCourseData));
+    await batch.commit();
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, userPath);
+  }
+}
+
+/**
+ * Updates the final grade for a course document.
+ */
+export async function updateCourseFinalGrade(
+  uid: string,
+  termId: string,
+  courseId: string,
+  finalGrade: FinalGrade | null
+): Promise<void> {
+  const path = `users/${uid}/terms/${termId}/courses/${courseId}`;
+  try {
+    const courseRef = doc(db, 'users', uid, 'terms', termId, 'courses', courseId);
+    await updateDoc(courseRef, removeUndefinedFields({
+      finalGrade: finalGrade || null,
+    }));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, path);
+  }
+}
+
+export interface BackfillCourseInput {
+  name: string;
+  courseId?: string;
+  level: UserLevel;
+  assessmentType: AssessmentType;
+  finalGrade: FinalGrade;
+  scores?: CourseScores;
+  examComponents?: any;
+  projectComponents?: any;
+}
+
+/**
+ * Creates a historical read-only term entry with completed courses and final grades.
+ */
+export async function backfillPastTerm(
+  uid: string,
+  termData: {
+    termName: string;
+    calendarId?: string;
+    courses: BackfillCourseInput[];
+  }
+): Promise<string> {
+  const userPath = `users/${uid}`;
+  try {
+    const batch = writeBatch(db);
+
+    const termsCollectionRef = collection(db, 'users', uid, 'terms');
+    const newTermRef = doc(termsCollectionRef);
+    const termId = newTermRef.id;
+
+    const termRecord: UserTerm = {
+      termId,
+      calendarId: termData.calendarId || termId,
+      termName: termData.termName,
+      isActive: false,
+      isManualBackfill: true,
+      createdAt: new Date().toISOString(),
+    };
+    batch.set(newTermRef, removeUndefinedFields(termRecord));
+
+    termData.courses.forEach((c, index) => {
+      const courseDocId = c.courseId || `hist-${index}-${Date.now()}`;
+      const courseDocRef = doc(db, 'users', uid, 'terms', termId, 'courses', courseDocId);
+
+      const courseRecord: any = {
+        courseId: courseDocId,
+        name: c.name,
+        level: c.level,
+        assessmentType: c.assessmentType,
+        color: COURSE_COLORS[index % COURSE_COLORS.length],
+        finalGrade: c.finalGrade,
+        scores: c.scores || {},
+        weeklyProgress: {},
+        status: 'enrolled',
+      };
+
+      if (c.examComponents) courseRecord.examComponents = c.examComponents;
+      if (c.projectComponents) courseRecord.projectComponents = c.projectComponents;
+
+      batch.set(courseDocRef, removeUndefinedFields(courseRecord));
+    });
+
+    await batch.commit();
+    return termId;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, userPath);
+  }
+}
+
+/**
+ * Delete a user term and all its courses subcollection docs.
+ */
+export async function deleteUserTerm(uid: string, termId: string): Promise<void> {
+  const path = `users/${uid}/terms/${termId}`;
+  try {
+    const coursesSnap = await getDocs(collection(db, 'users', uid, 'terms', termId, 'courses'));
+    const batch = writeBatch(db);
+    coursesSnap.forEach((d) => {
+      batch.delete(d.ref);
+    });
+    batch.delete(doc(db, 'users', uid, 'terms', termId));
+    await batch.commit();
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  }
+}
+
+/**
+ * Permanently delete an individual course document from a term.
+ */
+export async function deleteUserCourse(
+  uid: string,
+  termId: string,
+  courseId: string
+): Promise<void> {
+  const path = `users/${uid}/terms/${termId}/courses/${courseId}`;
+  try {
+    await deleteDoc(doc(db, 'users', uid, 'terms', termId, 'courses', courseId));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
   }
 }
 

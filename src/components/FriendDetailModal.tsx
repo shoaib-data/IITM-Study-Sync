@@ -4,6 +4,7 @@ import { calculateTermWeek, formatDateString } from '../lib/dateUtils';
 import { subscribeCalendarTerms } from '../lib/firestoreService';
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { FinalGradeBadge } from './FinalGradeBadge';
 import {
   X,
   Calendar,
@@ -61,7 +62,10 @@ export const FriendDetailModal: React.FC<FriendDetailModalProps> = ({ friend, on
             collection(db, 'users', friend.uid, 'terms', (foundActive as UserTerm).termId, 'courses')
           );
           cSnap.forEach((d) => {
-            curCourses.push({ id: d.id, ...(d.data() as Omit<UserCourse, 'id'>) });
+            const data = d.data() as Omit<UserCourse, 'id'>;
+            if (data.status !== 'dropped') {
+              curCourses.push({ id: d.id, ...data });
+            }
           });
         }
 
@@ -73,7 +77,10 @@ export const FriendDetailModal: React.FC<FriendDetailModalProps> = ({ friend, on
           );
           const cList: UserCourse[] = [];
           aSnap.forEach((d) => {
-            cList.push({ id: d.id, ...(d.data() as Omit<UserCourse, 'id'>) });
+            const data = d.data() as Omit<UserCourse, 'id'>;
+            if (data.status !== 'dropped') {
+              cList.push({ id: d.id, ...data });
+            }
           });
           archMap[archTerm.termId] = cList;
         }
@@ -283,12 +290,17 @@ export const FriendDetailModal: React.FC<FriendDetailModalProps> = ({ friend, on
                             key={course.id}
                             className="bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-lg p-3 space-y-2 text-xs"
                           >
-                            <div className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                              <span
-                                className="w-2.5 h-2.5 rounded-full"
-                                style={{ backgroundColor: course.color }}
-                              />
-                              {course.name}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full"
+                                  style={{ backgroundColor: course.color }}
+                                />
+                                {course.name}
+                              </div>
+                              {course.finalGrade && (
+                                <FinalGradeBadge grade={course.finalGrade} />
+                              )}
                             </div>
 
                             {/* Scores list */}

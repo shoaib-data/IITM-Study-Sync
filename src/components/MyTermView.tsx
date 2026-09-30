@@ -11,6 +11,8 @@ import {
 import { UserTerm, UserCourse, CalendarTerm, CourseScores, ComponentScore } from '../types';
 import { calculateTermWeek } from '../lib/dateUtils';
 import { ChecklistIconToggle } from './ChecklistIconToggle';
+import { CourseActionMenu } from './CourseActionMenu';
+import { ReplaceCourseModal } from './ReplaceCourseModal';
 import { Check, Edit3, Award, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 
 export const MyTermView: React.FC = () => {
@@ -21,6 +23,7 @@ export const MyTermView: React.FC = () => {
   const [courses, setCourses] = useState<UserCourse[]>([]);
   const [calendarTerms, setCalendarTerms] = useState<CalendarTerm[]>([]);
   const [expandedScoresCourseId, setExpandedScoresCourseId] = useState<string | null>(null);
+  const [courseToReplace, setCourseToReplace] = useState<UserCourse | null>(null);
 
   // Subscribe to user terms
   useEffect(() => {
@@ -211,19 +214,28 @@ export const MyTermView: React.FC = () => {
                 <tr key={course.id} className="hover:bg-zinc-50/40 dark:hover:bg-zinc-800/30 transition-colors">
                   {/* Course Info Column */}
                   <td className="sticky left-0 bg-white dark:bg-zinc-900 hover:bg-zinc-50/40 dark:hover:bg-zinc-800/30 z-10 px-4 py-3 border-r border-zinc-200 dark:border-zinc-800">
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className="w-3 h-3 rounded-full shrink-0 shadow-2xs"
-                        style={{ backgroundColor: course.color }}
-                      />
-                      <div>
-                        <div className="font-semibold text-zinc-900 dark:text-zinc-100 line-clamp-1">
-                          {course.name}
-                        </div>
-                        <div className="text-[10px] text-zinc-400 capitalize">
-                          {course.assessmentType} course
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className="w-3 h-3 rounded-full shrink-0 shadow-2xs"
+                          style={{ backgroundColor: course.color }}
+                        />
+                        <div className="min-w-0">
+                          <div className="font-semibold text-zinc-900 dark:text-zinc-100 line-clamp-1">
+                            {course.name}
+                          </div>
+                          <div className="text-[10px] text-zinc-400 capitalize">
+                            {course.assessmentType} course
+                          </div>
                         </div>
                       </div>
+
+                      {/* Drop / Replace Course ⋮ Menu */}
+                      <CourseActionMenu
+                        course={course}
+                        termId={activeTerm.termId}
+                        onOpenReplaceModal={(c) => setCourseToReplace(c)}
+                      />
                     </div>
                   </td>
 
@@ -352,11 +364,20 @@ export const MyTermView: React.FC = () => {
                       ({course.assessmentType === 'project' ? 'Project' : 'Exam'})
                     </span>
                   </div>
-                  {isExpanded ? (
-                    <ChevronUp className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
-                  )}
+                  <div className="flex items-center gap-2">
+                    {isExpanded ? (
+                      <ChevronUp className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+                    )}
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <CourseActionMenu
+                        course={course}
+                        termId={activeTerm.termId}
+                        onOpenReplaceModal={(c) => setCourseToReplace(c)}
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {isExpanded && (
@@ -478,6 +499,17 @@ export const MyTermView: React.FC = () => {
           })}
         </div>
       </div>
+
+      {/* Replace Course Modal */}
+      {activeTerm && (
+        <ReplaceCourseModal
+          isOpen={!!courseToReplace}
+          onClose={() => setCourseToReplace(null)}
+          courseToReplace={courseToReplace}
+          activeTermId={activeTerm.termId}
+          enrolledCourseIds={courses.map((c) => c.courseId)}
+        />
+      )}
     </div>
   );
 };

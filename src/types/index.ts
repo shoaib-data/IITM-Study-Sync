@@ -88,6 +88,10 @@ export interface CourseScores {
   viva?: ComponentScore;
 }
 
+export type FinalGrade = 'S' | 'A' | 'B' | 'C' | 'D' | 'E' | 'I';
+
+export type CourseStatus = 'enrolled' | 'dropped';
+
 export interface UserCourse {
   id: string;
   courseId: string;
@@ -99,6 +103,9 @@ export interface UserCourse {
   color: string;
   scores: CourseScores;
   weeklyProgress: Record<string, WeeklyChecklist>; // 'week1' .. 'week12'
+  status?: CourseStatus; // 'enrolled' | 'dropped'
+  droppedAt?: string; // ISO string
+  finalGrade?: FinalGrade | null;
 }
 
 export interface UserTerm {
@@ -107,6 +114,7 @@ export interface UserTerm {
   termName: string;
   isActive: boolean;
   createdAt: string;
+  isManualBackfill?: boolean;
 }
 
 export interface FriendRequest {
