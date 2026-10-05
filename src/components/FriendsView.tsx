@@ -5,7 +5,7 @@ import {
   sendFriendRequest,
   acceptFriendRequest,
   declineFriendRequest,
-  getFriendsList,
+  subscribeFriendsList,
 } from '../lib/firestoreService';
 import { FriendRequest, UserProfile } from '../types';
 import { FriendDetailModal } from './FriendDetailModal';
@@ -42,21 +42,18 @@ export const FriendsView: React.FC = () => {
     return () => unsub();
   }, [currentUser]);
 
-  // Load connected friends profiles
+  // Subscribe to connected friends profiles in real-time
   useEffect(() => {
     if (!userProfile?.friends || userProfile.friends.length === 0) {
       setConnectedFriends([]);
       return;
     }
 
-    let isMounted = true;
-    getFriendsList(userProfile.friends).then((list) => {
-      if (isMounted) setConnectedFriends(list);
+    const unsub = subscribeFriendsList(userProfile.friends, (list) => {
+      setConnectedFriends(list);
     });
 
-    return () => {
-      isMounted = false;
-    };
+    return () => unsub();
   }, [userProfile?.friends]);
 
   const handleCopyMyCode = () => {
@@ -221,11 +218,7 @@ export const FriendsView: React.FC = () => {
                   >
                     <div className="flex items-center gap-2.5">
                       <div className="w-7 h-7 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden flex items-center justify-center text-[10px] font-bold text-zinc-700 dark:text-zinc-300">
-                        {req.fromPhotoURL ? (
-                          <img src={req.fromPhotoURL} alt={req.fromName} className="w-full h-full object-cover" />
-                        ) : (
-                          req.fromName.charAt(0).toUpperCase()
-                        )}
+                        {(req.fromName?.trim().charAt(0) || '?').toUpperCase()}
                       </div>
                       <div>
                         <div className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">{req.fromName}</div>
@@ -311,11 +304,7 @@ export const FriendsView: React.FC = () => {
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden flex items-center justify-center text-sm font-bold text-zinc-700 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700">
-                      {f.photoURL ? (
-                        <img src={f.photoURL} alt={f.name} className="w-full h-full object-cover" />
-                      ) : (
-                        f.name.charAt(0).toUpperCase()
-                      )}
+                      {(f.name?.trim().charAt(0) || '?').toUpperCase()}
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">{f.name}</h4>

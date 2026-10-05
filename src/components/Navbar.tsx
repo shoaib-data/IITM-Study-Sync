@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useSaveStatus } from '../context/SaveStatusContext';
 import { SaveStatusBadge } from './SaveStatusBadge';
 import {
   BookOpen,
@@ -15,6 +16,7 @@ import {
   GraduationCap,
   Sun,
   Moon,
+  User as UserIcon,
 } from 'lucide-react';
 import { USER_LEVELS } from '../lib/constants';
 import { updateUserLevel } from '../lib/firestoreService';
@@ -34,10 +36,38 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab }) => {
-  const { userProfile, signOut } = useAuth();
-  const { theme, isDark, toggleTheme } = useTheme();
+  const { userProfile, signOut, updateDisplayName } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
+  const { triggerSaving, triggerSaved, triggerError } = useSaveStatus();
+
   const [copied, setCopied] = useState(false);
   const [levelMenuOpen, setLevelMenuOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [displayNameInput, setDisplayNameInput] = useState('');
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [nameSavedFeedback, setNameSavedFeedback] = useState(false);
+
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const levelMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (userProfile?.name) {
+      setDisplayNameInput(userProfile.name);
+    }
+  }, [userProfile?.name]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+      if (levelMenuRef.current && !levelMenuRef.current.contains(e.target as Node)) {
+        setLevelMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const copyFriendCode = () => {
     if (!userProfile?.friendCode) return;
@@ -55,6 +85,28 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab }) => {
       console.error('Failed to update level:', err);
     }
   };
+
+  const handleSaveDisplayName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = displayNameInput.trim();
+    if (!userProfile || !trimmed) return;
+
+    setIsSavingName(true);
+    triggerSaving();
+    try {
+      await updateDisplayName(trimmed);
+      triggerSaved();
+      setNameSavedFeedback(true);
+      setTimeout(() => setNameSavedFeedback(false), 2000);
+    } catch (err) {
+      console.error('Failed to update display name:', err);
+      triggerError('Failed to save name');
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const avatarLetter = (userProfile?.name?.trim().charAt(0) || '?').toUpperCase();
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: BookOpen },
@@ -90,7 +142,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab }) => {
 
             {/* Level Selector */}
             {userProfile && (
-              <div className="relative ml-2 hidden sm:block">
+              <div className="relative ml-2 hidden sm:block" ref={levelMenuRef}>
                 <button
                   id="user-level-badge-btn"
                   onClick={() => setLevelMenuOpen(!levelMenuOpen)}
@@ -167,16 +219,94 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab }) => {
               )}
             </button>
 
-            {/* User Profile & Sign Out */}
+            {/* User Profile Avatar Dropdown & Sign Out */}
             {userProfile && (
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden flex items-center justify-center text-xs font-semibold text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-600">
-                  {userProfile.photoURL ? (
-                    <img src={userProfile.photoURL} alt={userProfile.name} className="w-full h-full object-cover" />
-                  ) : (
-                    userProfile.name.charAt(0).toUpperCase()
-                  )}
-                </div>
+              <div className="flex items-center gap-2 relative" ref={profileMenuRef}>
+                <button
+                  id="user-avatar-btn"
+                  type="button"
+                  onClick={() => {
+                    setDisplayNameInput(userProfile.name);
+                    setProfileMenuOpen((prev) => !prev);
+                  }}
+                  title="Edit Display Name & Profile"
+                  aria-label="Open profile menu"
+                  aria-expanded={profileMenuOpen}
+                  className="w-8 h-8 rounded-full bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 flex items-center justify-center text-xs font-bold text-zinc-800 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-600 transition-all cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-zinc-500"
+                >
+                  {avatarLetter}
+                </button>
+
+                {profileMenuOpen && (
+                  <div
+                    id="user-profile-dropdown"
+                    className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl p-4 z-50 space-y-3.5"
+                  >
+                    {/* Profile Header */}
+                    <div className="flex items-center gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-800">
+                      <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-sm font-bold text-zinc-800 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-600 shrink-0">
+                        {(displayNameInput.trim().charAt(0) || avatarLetter).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-bold text-zinc-900 dark:text-zinc-100 truncate">
+                          {userProfile.name}
+                        </div>
+                        <div className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
+                          {userProfile.email}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Editable Display Name Form */}
+                    <form onSubmit={handleSaveDisplayName} className="space-y-2.5">
+                      <div>
+                        <label
+                          htmlFor="profile-display-name-input"
+                          className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 mb-1"
+                        >
+                          <UserIcon className="w-3 h-3" />
+                          <span>Display Name</span>
+                        </label>
+                        <input
+                          id="profile-display-name-input"
+                          type="text"
+                          value={displayNameInput}
+                          onChange={(e) => setDisplayNameInput(e.target.value)}
+                          placeholder="Enter your display name"
+                          maxLength={50}
+                          className="w-full px-3 py-1.5 text-xs rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-100"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        {nameSavedFeedback ? (
+                          <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Saved!</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-zinc-400">
+                            Visible to connected friends
+                          </span>
+                        )}
+
+                        <button
+                          id="profile-save-name-btn"
+                          type="submit"
+                          disabled={
+                            isSavingName ||
+                            !displayNameInput.trim() ||
+                            displayNameInput.trim() === userProfile.name
+                          }
+                          className="px-3.5 py-1.5 text-xs font-semibold text-white dark:text-zinc-900 bg-zinc-900 dark:bg-zinc-100 hover:bg-zinc-800 dark:hover:bg-white rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                        >
+                          {isSavingName ? 'Saving...' : 'Save'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+
                 <button
                   id="sign-out-btn"
                   onClick={signOut}

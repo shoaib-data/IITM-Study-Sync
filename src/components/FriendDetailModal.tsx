@@ -119,11 +119,7 @@ export const FriendDetailModal: React.FC<FriendDetailModalProps> = ({ friend, on
         <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/70 dark:bg-zinc-850/60">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden flex items-center justify-center text-sm font-bold text-zinc-700 dark:text-zinc-200">
-              {friend.photoURL ? (
-                <img src={friend.photoURL} alt={friend.name} className="w-full h-full object-cover" />
-              ) : (
-                friend.name.charAt(0).toUpperCase()
-              )}
+              {(friend.name?.trim().charAt(0) || '?').toUpperCase()}
             </div>
             <div>
               <div className="flex items-center gap-2">

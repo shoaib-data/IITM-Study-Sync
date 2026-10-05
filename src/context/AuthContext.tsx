@@ -1,7 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, signInWithGoogle, logOut } from '../lib/firebase';
-import { ensureUserProfile, subscribeUserProfile, seedCourseCatalogIfEmpty, seedCalendarIfEmpty } from '../lib/firestoreService';
+import {
+  ensureUserProfile,
+  subscribeUserProfile,
+  updateUserDisplayName,
+  seedCourseCatalogIfEmpty,
+  seedCalendarIfEmpty,
+} from '../lib/firestoreService';
 import { UserProfile, UserLevel } from '../types';
 
 interface AuthContextType {
@@ -12,6 +18,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   changeLevel: (level: UserLevel) => Promise<void>;
+  updateDisplayName: (name: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -22,6 +29,7 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
   refreshProfile: async () => {},
   changeLevel: async () => {},
+  updateDisplayName: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -36,18 +44,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
+    let unsubProfile: (() => void) | null = null;
+
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      if (unsubProfile) {
+        unsubProfile();
+        unsubProfile = null;
+      }
+
       setCurrentUser(user);
       if (user) {
         try {
           const profile = await ensureUserProfile(user);
           setUserProfile(profile);
-          // Subscribe for real-time user document changes
-          const unsubProfile = subscribeUserProfile(user.uid, (updated) => {
+          // Subscribe for real-time user document changes from Firestore
+          unsubProfile = subscribeUserProfile(user.uid, (updated) => {
             if (updated) setUserProfile(updated);
           });
           setLoading(false);
-          return () => unsubProfile();
         } catch (err) {
           console.error('Error ensuring user profile:', err);
           setLoading(false);
@@ -58,7 +72,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    return () => unsubscribeAuth();
+    return () => {
+      unsubscribeAuth();
+      if (unsubProfile) {
+        unsubProfile();
+      }
+    };
   }, []);
 
   const handleSignIn = async () => {
@@ -97,6 +116,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateDisplayName = async (name: string) => {
+    const cleanName = name.trim();
+    if (!currentUser || !cleanName) return;
+    await updateUserDisplayName(currentUser.uid, cleanName);
+    setUserProfile((prev) => (prev ? { ...prev, name: cleanName } : prev));
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -107,6 +133,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signOut: handleSignOut,
         refreshProfile,
         changeLevel,
+        updateDisplayName,
       }}
     >
       {children}

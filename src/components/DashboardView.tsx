@@ -6,7 +6,7 @@ import {
   subscribeUserCourses,
   subscribeCalendarTerms,
   toggleWeeklyChecklist,
-  getFriendsList,
+  subscribeFriendsList,
 } from '../lib/firestoreService';
 import { UserTerm, UserCourse, CalendarTerm, UserProfile } from '../types';
 import { calculateTermWeek, formatDateString } from '../lib/dateUtils';
@@ -91,7 +91,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const weekInfo = calculateTermWeek(matchedCalendar?.startDate);
   const currentWeekKey = `week${weekInfo.weekNumber}`;
 
-  // Fetch Friends' Progress
+  // Subscribe to Friends' Progress in real-time so friend display names stay live from Firestore
   useEffect(() => {
     if (!userProfile?.friends || userProfile.friends.length === 0) {
       setFriendsProgress([]);
@@ -99,10 +99,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
 
     let isMounted = true;
-    const fetchFriendsData = async () => {
-      setLoadingFriends(true);
+    setLoadingFriends(true);
+
+    const unsubFriends = subscribeFriendsList(userProfile.friends, async (friendProfiles) => {
       try {
-        const friendProfiles = await getFriendsList(userProfile.friends);
         const summaries: FriendProgressSummary[] = [];
 
         for (const f of friendProfiles) {
@@ -163,11 +163,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         console.error('Error fetching friends progress:', err);
         if (isMounted) setLoadingFriends(false);
       }
-    };
+    });
 
-    fetchFriendsData();
     return () => {
       isMounted = false;
+      unsubFriends();
     };
   }, [userProfile?.friends, calendarTerms]);
 
@@ -201,7 +201,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              {userProfile?.name && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900">
+                  <span>{userProfile.name}</span>
+                </span>
+              )}
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200">
                 {userProfile?.level || 'IITM BS Degree'}
               </span>
@@ -213,7 +218,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
             </div>
             <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-              {activeTerm ? activeTerm.termName : 'Welcome to IITM Study Sync'}
+              {activeTerm
+                ? activeTerm.termName
+                : userProfile?.name
+                ? `Welcome, ${userProfile.name}`
+                : 'Welcome to IITM Study Sync'}
             </h1>
             <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
               {matchedCalendar ? (
@@ -483,15 +492,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden flex items-center justify-center text-xs font-bold text-zinc-700 dark:text-zinc-200">
-                          {item.profile.photoURL ? (
-                            <img
-                              src={item.profile.photoURL}
-                              alt={item.profile.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            item.profile.name.charAt(0).toUpperCase()
-                          )}
+                          {(item.profile.name?.trim().charAt(0) || '?').toUpperCase()}
                         </div>
                         <div>
                           <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">

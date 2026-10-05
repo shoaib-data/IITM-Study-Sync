@@ -135,6 +135,36 @@ export async function updateUserLevel(uid: string, level: UserLevel): Promise<vo
   }
 }
 
+export async function updateUserDisplayName(uid: string, name: string): Promise<void> {
+  const path = `users/${uid}`;
+  const cleanName = name.trim();
+  if (!cleanName) return;
+
+  try {
+    await updateDoc(doc(db, 'users', uid), removeUndefinedFields({
+      name: cleanName,
+      updatedAt: new Date().toISOString(),
+    }));
+
+    // Also keep any sent friendRequests in sync with the new display name
+    try {
+      const q = query(collection(db, 'friendRequests'), where('fromUid', '==', uid));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const batch = writeBatch(db);
+        snap.forEach((d) => {
+          batch.update(d.ref, { fromName: cleanName });
+        });
+        await batch.commit();
+      }
+    } catch (syncErr) {
+      console.warn('Could not sync display name to friend requests:', syncErr);
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, path);
+  }
+}
+
 // --- Course Catalog (Admin Managed, Read-Only for others) ---
 
 export function subscribeCourseCatalog(callback: (courses: CourseCatalogItem[]) => void) {
@@ -744,12 +774,16 @@ export async function sendFriendRequest(
       return { success: false, message: 'A friend request is already pending for this student.' };
     }
 
+    // Always read the latest sender profile from Firestore so fromName reflects their editable display name
+    const freshSender = await getUserProfile(currentUser.uid);
+    const senderName = freshSender?.name || currentUser.name;
+
     const reqRef = doc(collection(db, 'friendRequests'));
     const requestData: any = {
       id: reqRef.id,
       fromUid: currentUser.uid,
       toUid: targetUser.uid,
-      fromName: currentUser.name,
+      fromName: senderName,
       fromEmail: currentUser.email,
       status: 'pending',
       createdAt: new Date().toISOString(),
@@ -849,4 +883,39 @@ export async function getFriendsList(friendUids: string[]): Promise<UserProfile[
     }
   }
   return profiles;
+}
+
+export function subscribeFriendsList(
+  friendUids: string[],
+  callback: (profiles: UserProfile[]) => void
+): () => void {
+  if (!friendUids || friendUids.length === 0) {
+    callback([]);
+    return () => {};
+  }
+
+  const profileMap: Record<string, UserProfile> = {};
+  const unsubs = friendUids.map((fUid) =>
+    onSnapshot(
+      doc(db, 'users', fUid),
+      (snap) => {
+        if (snap.exists()) {
+          profileMap[fUid] = snap.data() as UserProfile;
+        } else {
+          delete profileMap[fUid];
+        }
+        const ordered = friendUids
+          .map((id) => profileMap[id])
+          .filter((p): p is UserProfile => Boolean(p));
+        callback(ordered);
+      },
+      (err) => {
+        console.warn(`Could not subscribe to friend profile ${fUid}:`, err);
+      }
+    )
+  );
+
+  return () => {
+    unsubs.forEach((u) => u());
+  };
 }
