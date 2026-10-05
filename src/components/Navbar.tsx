@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useSaveStatus } from '../context/SaveStatusContext';
 import { SaveStatusBadge } from './SaveStatusBadge';
+import { UserAvatar } from './UserAvatar';
 import {
   BookOpen,
   Calendar,
@@ -36,7 +37,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab }) => {
-  const { userProfile, signOut, updateDisplayName } = useAuth();
+  const { currentUser, userProfile, signOut, updateDisplayName } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const { triggerSaving, triggerSaved, triggerError } = useSaveStatus();
 
@@ -106,7 +107,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab }) => {
     }
   };
 
-  const avatarLetter = (userProfile?.name?.trim().charAt(0) || '?').toUpperCase();
+  const avatarPhotoURL = userProfile?.photoURL || currentUser?.photoURL;
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: BookOpen },
@@ -232,9 +233,13 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab }) => {
                   title="Edit Display Name & Profile"
                   aria-label="Open profile menu"
                   aria-expanded={profileMenuOpen}
-                  className="w-8 h-8 rounded-full bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 flex items-center justify-center text-xs font-bold text-zinc-800 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-600 transition-all cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-zinc-500"
+                  className="rounded-full transition-all cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-zinc-500 hover:opacity-90"
                 >
-                  {avatarLetter}
+                  <UserAvatar
+                    photoURL={avatarPhotoURL}
+                    alt={userProfile.name}
+                    size="sm"
+                  />
                 </button>
 
                 {profileMenuOpen && (
@@ -244,9 +249,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab }) => {
                   >
                     {/* Profile Header */}
                     <div className="flex items-center gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-800">
-                      <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-sm font-bold text-zinc-800 dark:text-zinc-100 border border-zinc-300 dark:border-zinc-600 shrink-0">
-                        {(displayNameInput.trim().charAt(0) || avatarLetter).toUpperCase()}
-                      </div>
+                      <UserAvatar
+                        photoURL={avatarPhotoURL}
+                        alt={userProfile.name}
+                        size="md"
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-bold text-zinc-900 dark:text-zinc-100 truncate">
                           {userProfile.name}

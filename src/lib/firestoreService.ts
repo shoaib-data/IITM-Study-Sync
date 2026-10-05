@@ -94,9 +94,17 @@ export async function ensureUserProfile(
     if (snap.exists()) {
       const existing = snap.data() as UserProfile;
       const isAdmin = checkIsAdmin(authUser.email);
+      const updates: Record<string, any> = {};
       if (existing.isAdmin !== isAdmin) {
-        await updateDoc(userRef, { isAdmin });
+        updates.isAdmin = isAdmin;
         existing.isAdmin = isAdmin;
+      }
+      if (authUser.photoURL && existing.photoURL !== authUser.photoURL) {
+        updates.photoURL = authUser.photoURL;
+        existing.photoURL = authUser.photoURL;
+      }
+      if (Object.keys(updates).length > 0) {
+        await updateDoc(userRef, updates);
       }
       return existing;
     }
@@ -777,6 +785,7 @@ export async function sendFriendRequest(
     // Always read the latest sender profile from Firestore so fromName reflects their editable display name
     const freshSender = await getUserProfile(currentUser.uid);
     const senderName = freshSender?.name || currentUser.name;
+    const senderPhotoURL = freshSender?.photoURL || currentUser.photoURL;
 
     const reqRef = doc(collection(db, 'friendRequests'));
     const requestData: any = {
@@ -788,8 +797,8 @@ export async function sendFriendRequest(
       status: 'pending',
       createdAt: new Date().toISOString(),
     };
-    if (currentUser.photoURL) {
-      requestData.fromPhotoURL = currentUser.photoURL;
+    if (senderPhotoURL) {
+      requestData.fromPhotoURL = senderPhotoURL;
     }
 
     await setDoc(reqRef, removeUndefinedFields(requestData));

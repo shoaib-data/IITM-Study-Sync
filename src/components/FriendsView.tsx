@@ -9,6 +9,7 @@ import {
 } from '../lib/firestoreService';
 import { FriendRequest, UserProfile } from '../types';
 import { FriendDetailModal } from './FriendDetailModal';
+import { UserAvatar } from './UserAvatar';
 import {
   Users,
   UserPlus,
@@ -217,9 +218,11 @@ export const FriendsView: React.FC = () => {
                     className="p-3 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-lg space-y-2"
                   >
                     <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden flex items-center justify-center text-[10px] font-bold text-zinc-700 dark:text-zinc-300">
-                        {(req.fromName?.trim().charAt(0) || '?').toUpperCase()}
-                      </div>
+                      <UserAvatar
+                        photoURL={req.fromPhotoURL}
+                        alt={req.fromName}
+                        size="xs"
+                      />
                       <div>
                         <div className="text-xs font-semibold text-zinc-900 dark:text-zinc-100">{req.fromName}</div>
                         <div className="text-[10px] text-zinc-400">{req.fromEmail}</div>
@@ -303,9 +306,11 @@ export const FriendsView: React.FC = () => {
                   className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-xs cursor-pointer transition-all space-y-3"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden flex items-center justify-center text-sm font-bold text-zinc-700 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700">
-                      {(f.name?.trim().charAt(0) || '?').toUpperCase()}
-                    </div>
+                    <UserAvatar
+                      photoURL={f.photoURL}
+                      alt={f.name}
+                      size="md"
+                    />
                     <div>
                       <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">{f.name}</h4>
                       <span className="inline-block text-[11px] font-medium text-zinc-500 dark:text-zinc-400">

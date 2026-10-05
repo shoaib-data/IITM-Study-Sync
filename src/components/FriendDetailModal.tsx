@@ -5,6 +5,7 @@ import { subscribeCalendarTerms } from '../lib/firestoreService';
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { FinalGradeBadge } from './FinalGradeBadge';
+import { UserAvatar } from './UserAvatar';
 import {
   X,
   Calendar,
@@ -118,9 +119,11 @@ export const FriendDetailModal: React.FC<FriendDetailModalProps> = ({ friend, on
         {/* Modal Top Header */}
         <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/70 dark:bg-zinc-850/60">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden flex items-center justify-center text-sm font-bold text-zinc-700 dark:text-zinc-200">
-              {(friend.name?.trim().charAt(0) || '?').toUpperCase()}
-            </div>
+            <UserAvatar
+              photoURL={friend.photoURL}
+              alt={friend.name}
+              size="lg"
+            />
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">{friend.name}</h2>

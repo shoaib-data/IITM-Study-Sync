@@ -13,6 +13,7 @@ import { calculateTermWeek, formatDateString } from '../lib/dateUtils';
 import { ChecklistIconToggle } from './ChecklistIconToggle';
 import { CourseActionMenu } from './CourseActionMenu';
 import { ReplaceCourseModal } from './ReplaceCourseModal';
+import { UserAvatar } from './UserAvatar';
 import {
   Calendar as CalendarIcon,
   ChevronRight,
@@ -491,9 +492,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden flex items-center justify-center text-xs font-bold text-zinc-700 dark:text-zinc-200">
-                          {(item.profile.name?.trim().charAt(0) || '?').toUpperCase()}
-                        </div>
+                        <UserAvatar
+                          photoURL={item.profile.photoURL}
+                          alt={item.profile.name}
+                          size="sm"
+                        />
                         <div>
                           <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                             {item.profile.name}
