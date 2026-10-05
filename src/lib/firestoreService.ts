@@ -773,12 +773,14 @@ export async function sendFriendRequest(
     // Check if an existing pending request already exists
     const q = query(
       collection(db, 'friendRequests'),
-      where('fromUid', '==', currentUser.uid),
-      where('toUid', '==', targetUser.uid),
-      where('status', '==', 'pending')
+      where('fromUid', '==', currentUser.uid)
     );
     const existing = await getDocs(q);
-    if (!existing.empty) {
+    const hasPending = existing.docs.some((d) => {
+      const data = d.data() as FriendRequest;
+      return data.toUid === targetUser.uid && data.status === 'pending';
+    });
+    if (hasPending) {
       return { success: false, message: 'A friend request is already pending for this student.' };
     }
 

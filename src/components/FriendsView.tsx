@@ -71,14 +71,22 @@ export const FriendsView: React.FC = () => {
     setIsSending(true);
     setStatusMsg(null);
 
-    const res = await sendFriendRequest(userProfile, friendCodeInput.trim());
-    setIsSending(false);
-
-    if (res.success) {
-      setStatusMsg({ type: 'success', text: res.message });
-      setFriendCodeInput('');
-    } else {
-      setStatusMsg({ type: 'error', text: res.message });
+    try {
+      const res = await sendFriendRequest(userProfile, friendCodeInput.trim());
+      if (res.success) {
+        setStatusMsg({ type: 'success', text: res.message });
+        setFriendCodeInput('');
+      } else {
+        setStatusMsg({ type: 'error', text: res.message });
+      }
+    } catch (err) {
+      console.error('Error sending friend request:', err);
+      setStatusMsg({
+        type: 'error',
+        text: 'Failed to send friend request. Please check the code and try again.',
+      });
+    } finally {
+      setIsSending(false);
     }
   };
 

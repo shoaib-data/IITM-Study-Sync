@@ -31,7 +31,7 @@ service cloud.firestore {
 
     // Users collection
     match /users/{uid} {
-      allow read: if isUser(uid) || isFriend(uid) || isAdmin();
+      allow read: if isSignedIn();
       // Allow user creation by owner
       allow create: if isUser(uid);
       // Allow user update by owner, or allowing friend requests to update friends array
