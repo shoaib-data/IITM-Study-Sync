@@ -5,6 +5,7 @@ import {
   sendFriendRequest,
   acceptFriendRequest,
   declineFriendRequest,
+  removeFriend,
   subscribeFriendsList,
 } from '../lib/firestoreService';
 import { FriendRequest, UserProfile } from '../types';
@@ -13,6 +14,7 @@ import { UserAvatar } from './UserAvatar';
 import {
   Users,
   UserPlus,
+  UserMinus,
   Copy,
   Check,
   CheckCircle2,
@@ -20,6 +22,7 @@ import {
   Clock,
   ArrowRight,
   Shield,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const FriendsView: React.FC = () => {
@@ -29,6 +32,8 @@ export const FriendsView: React.FC = () => {
   const [outgoingRequests, setOutgoingRequests] = useState<FriendRequest[]>([]);
   const [connectedFriends, setConnectedFriends] = useState<UserProfile[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<UserProfile | null>(null);
+  const [friendToRemove, setFriendToRemove] = useState<UserProfile | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -103,6 +108,22 @@ export const FriendsView: React.FC = () => {
       await declineFriendRequest(reqId);
     } catch (err) {
       console.error('Error declining friend request:', err);
+    }
+  };
+
+  const handleConfirmRemoveFriend = async () => {
+    if (!currentUser || !friendToRemove) return;
+    setIsRemoving(true);
+    try {
+      await removeFriend(currentUser.uid, friendToRemove.uid);
+      if (selectedFriend?.uid === friendToRemove.uid) {
+        setSelectedFriend(null);
+      }
+      setFriendToRemove(null);
+    } catch (err) {
+      console.error('Error removing friend:', err);
+    } finally {
+      setIsRemoving(false);
     }
   };
 
@@ -313,18 +334,34 @@ export const FriendsView: React.FC = () => {
                   onClick={() => setSelectedFriend(f)}
                   className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-xs cursor-pointer transition-all space-y-3"
                 >
-                  <div className="flex items-center gap-3">
-                    <UserAvatar
-                      photoURL={f.photoURL}
-                      alt={f.name}
-                      size="md"
-                    />
-                    <div>
-                      <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">{f.name}</h4>
-                      <span className="inline-block text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-                        {f.level}
-                      </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <UserAvatar
+                        photoURL={f.photoURL}
+                        alt={f.name}
+                        size="md"
+                      />
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 truncate">{f.name}</h4>
+                        <span className="inline-block text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
+                          {f.level}
+                        </span>
+                      </div>
                     </div>
+
+                    <button
+                      id={`remove-friend-btn-${f.uid}`}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFriendToRemove(f);
+                      }}
+                      title={`Remove ${f.name}`}
+                      className="px-2.5 py-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 border border-transparent hover:border-rose-200 dark:hover:border-rose-800 rounded-md flex items-center gap-1 transition-colors shrink-0 cursor-pointer"
+                    >
+                      <UserMinus className="w-3.5 h-3.5" />
+                      <span>Remove</span>
+                    </button>
                   </div>
 
                   <div className="flex items-center justify-between text-xs pt-2 border-t border-zinc-100 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400">
@@ -347,6 +384,52 @@ export const FriendsView: React.FC = () => {
           friend={selectedFriend}
           onClose={() => setSelectedFriend(null)}
         />
+      )}
+
+      {/* Remove Friend Confirmation Modal */}
+      {friendToRemove && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div
+            id="remove-friend-modal"
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4"
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+                  Remove Friend?
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                  Are you sure you want to remove{' '}
+                  <strong className="text-zinc-900 dark:text-zinc-100">{friendToRemove.name}</strong> from your connected friends? You will no longer see each other&apos;s study progress until you reconnect by Friend Code.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                id="cancel-remove-friend-btn"
+                type="button"
+                disabled={isRemoving}
+                onClick={() => setFriendToRemove(null)}
+                className="px-4 py-2 text-xs font-semibold text-zinc-700 dark:text-zinc-300 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                id="confirm-remove-friend-btn"
+                type="button"
+                disabled={isRemoving}
+                onClick={handleConfirmRemoveFriend}
+                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
+              >
+                {isRemoving ? 'Removing...' : 'Remove Friend'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

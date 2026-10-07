@@ -10,6 +10,7 @@ import {
   where,
   onSnapshot,
   arrayUnion,
+  arrayRemove,
   writeBatch,
 } from 'firebase/firestore';
 import { db, checkIsAdmin, generateFriendCode } from './firebase';
@@ -875,6 +876,22 @@ export async function declineFriendRequest(requestId: string): Promise<void> {
   const path = `friendRequests/${requestId}`;
   try {
     await updateDoc(doc(db, 'friendRequests', requestId), { status: 'declined' });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, path);
+  }
+}
+
+export async function removeFriend(currentUid: string, friendUid: string): Promise<void> {
+  const path = `users/${currentUid}`;
+  try {
+    const batch = writeBatch(db);
+    const currentUserRef = doc(db, 'users', currentUid);
+    const friendUserRef = doc(db, 'users', friendUid);
+
+    batch.update(currentUserRef, { friends: arrayRemove(friendUid) });
+    batch.update(friendUserRef, { friends: arrayRemove(currentUid) });
+
+    await batch.commit();
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, path);
   }
