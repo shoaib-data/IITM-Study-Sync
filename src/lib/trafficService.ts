@@ -329,6 +329,7 @@ export async function recordPageView(options: {
         ...(options.userProfile?.level
           ? { [`levelDistribution.${options.userProfile.level}`]: increment(1) }
           : {}),
+        [`dailyHistory.${todayStr}.date`]: todayStr,
         [`dailyHistory.${todayStr}.totalVisits`]: increment(1),
         [`dailyHistory.${todayStr}.${isGuest ? 'guestVisits' : 'studentVisits'}`]: increment(1),
         lastUpdated: new Date().toISOString(),
@@ -353,6 +354,22 @@ export function subscribeTrafficSummary(
     async (snap) => {
       if (snap.exists()) {
         const data = snap.data() as TrafficSummary;
+        if (data.dailyHistory) {
+          const normalizedHistory: Record<string, DailyTrafficMetric> = {};
+          for (const [dateKey, metric] of Object.entries(data.dailyHistory)) {
+            if (metric && typeof metric === 'object') {
+              normalizedHistory[dateKey] = {
+                date: metric.date || dateKey,
+                totalVisits: metric.totalVisits ?? 0,
+                uniqueVisitors: metric.uniqueVisitors ?? 0,
+                guestVisits: metric.guestVisits ?? 0,
+                studentVisits: metric.studentVisits ?? 0,
+                pageViews: metric.pageViews || {},
+              };
+            }
+          }
+          data.dailyHistory = normalizedHistory;
+        }
         callback(data);
       } else {
         // Initialize default clean zero summary

@@ -74,9 +74,6 @@ export const TrafficViewerView: React.FC = () => {
   };
 
   const handleResetToZero = async () => {
-    if (!confirm('Reset traffic analytics to 0 real visits? All counters and historical baselines will be set to zero.')) {
-      return;
-    }
     setIsResetting(true);
     try {
       await resetTrafficToZero();
@@ -112,32 +109,43 @@ export const TrafficViewerView: React.FC = () => {
   }
 
   // Calculate daily data based on selected time range
-  const historyEntries = (Object.values(summary.dailyHistory || {}) as DailyTrafficMetric[]).sort((a, b) =>
-    a.date.localeCompare(b.date)
-  );
+  const historyEntries: DailyTrafficMetric[] = Object.entries<Partial<DailyTrafficMetric>>(
+    summary.dailyHistory || {}
+  )
+    .map(([dateKey, metric]) => ({
+      date: metric?.date || dateKey,
+      totalVisits: metric?.totalVisits ?? 0,
+      uniqueVisitors: metric?.uniqueVisitors ?? 0,
+      guestVisits: metric?.guestVisits ?? 0,
+      studentVisits: metric?.studentVisits ?? 0,
+      pageViews: metric?.pageViews || {},
+    }))
+    .filter((entry) => Boolean(entry.date))
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
   const displayHistory: DailyTrafficMetric[] =
     timeRange === '7d' ? historyEntries.slice(-7) : historyEntries.slice(-14);
 
-  const maxDailyVisits = Math.max(...displayHistory.map((d) => d.totalVisits), 1);
-  const totalRangeVisits = displayHistory.reduce((acc, d) => acc + d.totalVisits, 0);
+  const maxDailyVisits = Math.max(...displayHistory.map((d) => d.totalVisits || 0), 1);
+  const totalRangeVisits = displayHistory.reduce((acc, d) => acc + (d.totalVisits || 0), 0);
   const avgDailyVisits = Math.round(totalRangeVisits / (displayHistory.length || 1));
 
   // Device calculations
-  const totalDeviceVisits =
-    summary.deviceDistribution.desktop +
-    summary.deviceDistribution.mobile +
-    summary.deviceDistribution.tablet;
+  const desktopCount = summary.deviceDistribution?.desktop ?? 0;
+  const mobileCount = summary.deviceDistribution?.mobile ?? 0;
+  const tabletCount = summary.deviceDistribution?.tablet ?? 0;
+  const totalDeviceVisits = desktopCount + mobileCount + tabletCount;
 
-  const desktopPct = totalDeviceVisits > 0 ? Math.round((summary.deviceDistribution.desktop / totalDeviceVisits) * 100) : 0;
-  const mobilePct = totalDeviceVisits > 0 ? Math.round((summary.deviceDistribution.mobile / totalDeviceVisits) * 100) : 0;
-  const tabletPct = totalDeviceVisits > 0 ? Math.round((summary.deviceDistribution.tablet / totalDeviceVisits) * 100) : 0;
+  const desktopPct = totalDeviceVisits > 0 ? Math.round((desktopCount / totalDeviceVisits) * 100) : 0;
+  const mobilePct = totalDeviceVisits > 0 ? Math.round((mobileCount / totalDeviceVisits) * 100) : 0;
+  const tabletPct = totalDeviceVisits > 0 ? Math.round((tabletCount / totalDeviceVisits) * 100) : 0;
 
   // Student vs Guest calculation
-  const totalStudents = (Object.values(summary.dailyHistory || {}) as DailyTrafficMetric[]).reduce(
+  const totalStudents = historyEntries.reduce(
     (acc, d) => acc + (d.studentVisits || 0),
     0
   );
-  const totalGuests = (Object.values(summary.dailyHistory || {}) as DailyTrafficMetric[]).reduce(
+  const totalGuests = historyEntries.reduce(
     (acc, d) => acc + (d.guestVisits || 0),
     0
   );
