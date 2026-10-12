@@ -7,16 +7,39 @@ import {
   query,
   orderBy,
   limit,
+  where,
   onSnapshot,
   increment,
   updateDoc,
+  arrayUnion,
+  getCountFromServer,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { TrafficSummary, TrafficLogEntry, DailyTrafficMetric, UserProfile } from '../types';
 import { removeUndefinedFields } from './firestoreService';
 
 const VISITOR_ID_KEY = 'iitm_study_sync_visitor_id';
-const LAST_SESSION_KEY = 'iitm_study_sync_last_session';
+const SESSION_VISIT_KEY = 'iitm_study_sync_session_active';
+
+/**
+ * Returns India calendar date string (YYYY-MM-DD) based on Asia/Kolkata timezone.
+ * Resets precisely at midnight Indian Standard Time (IST).
+ */
+export function getIndiaDateString(date: Date = new Date()): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  } catch {
+    // Fallback if Intl timeZone is not supported
+    const offset = 5.5 * 60 * 60 * 1000;
+    const istTime = new Date(date.getTime() + offset);
+    return istTime.toISOString().split('T')[0];
+  }
+}
 
 /**
  * Returns or initializes a persistent anonymous visitor ID
@@ -82,17 +105,17 @@ export function detectOS(): string {
 }
 
 /**
- * Generates an initial clean zero baseline spanning the last 14 days
+ * Generates an initial clean zero baseline spanning the last 14 days in Asia/Kolkata time
  */
 export function getZeroTrafficSummary(): TrafficSummary {
   const history: Record<string, DailyTrafficMetric> = {};
   const today = new Date();
 
-  // Create date buckets for the last 14 days initialized at 0 visits
+  // Create date buckets for the last 14 days in Asia/Kolkata timezone
   for (let i = 13; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
-    const dateStr = d.toISOString().split('T')[0];
+    const dateStr = getIndiaDateString(d);
 
     history[dateStr] = {
       date: dateStr,
@@ -100,22 +123,16 @@ export function getZeroTrafficSummary(): TrafficSummary {
       uniqueVisitors: 0,
       studentVisits: 0,
       guestVisits: 0,
-      pageViews: {},
+      loggedInUids: [],
     };
   }
 
   return {
     totalVisits: 0,
     uniqueVisitors: 0,
+    registeredUsers: 0,
     todayVisits: 0,
-    activeSessions: 1, // Current active viewer
-    pageViews: {
-      Dashboard: 0,
-      'My Term': 0,
-      'Course History': 0,
-      Friends: 0,
-      'Start New Term': 0,
-    },
+    activeSessions: 1,
     deviceDistribution: {
       desktop: 0,
       mobile: 0,
@@ -139,123 +156,42 @@ export function getZeroTrafficSummary(): TrafficSummary {
 }
 
 /**
- * Optional seed generator for mock test environments
+ * TOTAL SITE VISITS:
+ * Increment once when the app loads in a new session (using sessionStorage).
+ * Refreshes, in-app navigation, and tab switches inside the app DO NOT count.
+ * Closing and reopening the site, or opening it in a new browser tab, starts a new
+ * browser session and counts as a new visit.
+ * The same person opening the site twice in a day counts as 2.
  */
-export function generateSeedHistoricalMetrics(): Record<string, DailyTrafficMetric> {
-  const history: Record<string, DailyTrafficMetric> = {};
-  const today = new Date();
-
-  for (let i = 14; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    const dateStr = d.toISOString().split('T')[0];
-    const dayOfWeek = d.getDay();
-
-    const baseVisits = dayOfWeek === 0 ? 165 : dayOfWeek === 4 ? 140 : 85 + Math.floor(Math.sin(i) * 30);
-    const visits = Math.max(45, baseVisits + Math.floor(Math.random() * 25));
-    const unique = Math.round(visits * 0.62);
-    const student = Math.round(visits * 0.82);
-    const guest = visits - student;
-
-    history[dateStr] = {
-      date: dateStr,
-      totalVisits: visits,
-      uniqueVisitors: unique,
-      studentVisits: student,
-      guestVisits: guest,
-      pageViews: {
-        Dashboard: Math.round(visits * 0.42),
-        'My Term': Math.round(visits * 0.35),
-        'Course History': Math.round(visits * 0.1),
-        Friends: Math.round(visits * 0.08),
-        'Start New Term': Math.round(visits * 0.05),
-      },
-    };
-  }
-
-  return history;
-}
-
-export function generateSeedTrafficSummary(): TrafficSummary {
-  const dailyHistory = generateSeedHistoricalMetrics();
-  let totalVisits = 0;
-  let uniqueVisitors = 0;
-  const todayStr = new Date().toISOString().split('T')[0];
-
-  Object.values(dailyHistory).forEach((d) => {
-    totalVisits += d.totalVisits;
-    uniqueVisitors += Math.round(d.uniqueVisitors * 0.65);
-  });
-
-  return {
-    totalVisits: totalVisits + 342,
-    uniqueVisitors: Math.max(180, Math.round(uniqueVisitors * 0.8)),
-    todayVisits: dailyHistory[todayStr]?.totalVisits || 78,
-    activeSessions: 7,
-    pageViews: {
-      Dashboard: 780,
-      'My Term': 690,
-      'Course History': 210,
-      Friends: 175,
-      'Start New Term': 120,
-      'Sign In / Welcome': 95,
-      'Admin Console': 35,
-    },
-    deviceDistribution: {
-      desktop: 1140,
-      mobile: 820,
-      tablet: 145,
-    },
-    browserDistribution: {
-      Chrome: 1420,
-      Firefox: 310,
-      Safari: 245,
-      Edge: 130,
-    },
-    levelDistribution: {
-      Foundation: 950,
-      'Diploma in Programming': 580,
-      'Diploma in Data Science': 420,
-      Degree: 155,
-    },
-    dailyHistory,
-    lastUpdated: new Date().toISOString(),
-  };
-}
-
-let lastLoggedPage = '';
-let lastLogTimestamp = 0;
-
-/**
- * Record a pageview / visitor event
- */
-export async function recordPageView(options: {
-  page: string;
-  path?: string;
+export async function recordSiteVisit(options: {
+  currentUser?: { uid: string } | null;
   userProfile?: UserProfile | null;
-}) {
-  const now = Date.now();
-  // Prevent duplicate logs within 2 seconds for the same page
-  if (options.page === lastLoggedPage && now - lastLogTimestamp < 2000) {
+}): Promise<void> {
+  if (typeof window === 'undefined') return;
+
+  // If this browser tab/session already recorded its visit, skip!
+  if (sessionStorage.getItem(SESSION_VISIT_KEY)) {
     return;
   }
-  lastLoggedPage = options.page;
-  lastLogTimestamp = now;
+
+  // Set the sessionStorage flag immediately to guard against re-renders or concurrent calls
+  sessionStorage.setItem(SESSION_VISIT_KEY, 'true');
 
   try {
     const visitorId = getVisitorId();
     const device = detectDevice();
     const browser = detectBrowser();
     const os = detectOS();
-    const todayStr = new Date().toISOString().split('T')[0];
-    const isGuest = !options.userProfile;
+    const todayIndiaStr = getIndiaDateString();
+    const isGuest = !options.userProfile && !options.currentUser;
 
     const logEntry: Omit<TrafficLogEntry, 'id'> = {
       timestamp: new Date().toISOString(),
-      page: options.page,
-      path: options.path || `/${options.page.toLowerCase().replace(/\s+/g, '-')}`,
+      event: isGuest ? 'Guest Session' : 'Student Session',
+      page: 'Site Session',
+      path: '/',
       visitorId,
-      userId: options.userProfile?.uid,
+      userId: options.userProfile?.uid || options.currentUser?.uid,
       userName: options.userProfile?.name,
       userEmail: options.userProfile?.email,
       userLevel: options.userProfile?.level,
@@ -266,79 +202,118 @@ export async function recordPageView(options: {
       referrer: typeof document !== 'undefined' ? document.referrer || 'Direct Visit' : 'Direct Visit',
     };
 
-    // 1. Add to trafficLogs collection
+    // 1. Add entry to trafficLogs collection
     const cleanLog = removeUndefinedFields(logEntry);
     await addDoc(collection(db, 'trafficLogs'), cleanLog);
 
-    // 2. Update aggregate summary document
+    // 2. Increment aggregate siteTraffic summary document
     const summaryDocRef = doc(db, 'siteTraffic', 'summary');
     const summarySnap = await getDoc(summaryDocRef);
-
-    const isFirstTimeVisitor = typeof window !== 'undefined' && !localStorage.getItem('iitm_visitor_tracked');
-    if (isFirstTimeVisitor && typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('iitm_visitor_tracked', 'true');
-      } catch {
-        // ignore localStorage access issues
-      }
-    }
 
     if (!summarySnap.exists()) {
       const initial = getZeroTrafficSummary();
       initial.totalVisits = 1;
-      initial.todayVisits = 1;
-      initial.uniqueVisitors = 1;
       initial.lastUpdated = new Date().toISOString();
-      if (!initial.dailyHistory[todayStr]) {
-        initial.dailyHistory[todayStr] = {
-          date: todayStr,
-          totalVisits: 1,
-          uniqueVisitors: 1,
-          guestVisits: isGuest ? 1 : 0,
-          studentVisits: isGuest ? 0 : 1,
-          pageViews: { [options.page]: 1 },
-        };
-      } else {
-        initial.dailyHistory[todayStr].totalVisits = 1;
-        initial.dailyHistory[todayStr].uniqueVisitors = 1;
-        if (isGuest) {
-          initial.dailyHistory[todayStr].guestVisits = 1;
-        } else {
-          initial.dailyHistory[todayStr].studentVisits = 1;
-        }
-        initial.dailyHistory[todayStr].pageViews = { [options.page]: 1 };
-      }
-      initial.pageViews[options.page] = 1;
+      initial.dailyHistory[todayIndiaStr] = {
+        date: todayIndiaStr,
+        totalVisits: 1,
+        uniqueVisitors: 1,
+        guestVisits: isGuest ? 1 : 0,
+        studentVisits: isGuest ? 0 : 1,
+        loggedInUids: options.userProfile?.uid ? [options.userProfile.uid] : [],
+      };
       initial.deviceDistribution[device] = 1;
-      initial.browserDistribution[browser] = (initial.browserDistribution[browser] || 0) + 1;
+      initial.browserDistribution = { [browser]: 1 };
       if (options.userProfile?.level) {
-        initial.levelDistribution[options.userProfile.level] =
-          (initial.levelDistribution[options.userProfile.level] || 0) + 1;
+        initial.levelDistribution = { [options.userProfile.level]: 1 };
       }
-
       await setDoc(summaryDocRef, removeUndefinedFields(initial));
     } else {
-      // Atomic increment
       await updateDoc(summaryDocRef, {
         totalVisits: increment(1),
-        todayVisits: increment(1),
-        ...(isFirstTimeVisitor ? { uniqueVisitors: increment(1) } : {}),
-        [`pageViews.${options.page}`]: increment(1),
         [`deviceDistribution.${device}`]: increment(1),
         [`browserDistribution.${browser}`]: increment(1),
         ...(options.userProfile?.level
           ? { [`levelDistribution.${options.userProfile.level}`]: increment(1) }
           : {}),
-        [`dailyHistory.${todayStr}.date`]: todayStr,
-        [`dailyHistory.${todayStr}.totalVisits`]: increment(1),
-        [`dailyHistory.${todayStr}.${isGuest ? 'guestVisits' : 'studentVisits'}`]: increment(1),
+        [`dailyHistory.${todayIndiaStr}.date`]: todayIndiaStr,
+        [`dailyHistory.${todayIndiaStr}.totalVisits`]: increment(1),
+        [`dailyHistory.${todayIndiaStr}.${isGuest ? 'guestVisits' : 'studentVisits'}`]: increment(1),
         lastUpdated: new Date().toISOString(),
       });
     }
   } catch (err) {
-    // Non-blocking: fail silently on logging errors
-    console.debug('[Traffic Tracker] Non-blocking ping note:', err);
+    console.debug('[Traffic Tracker] Non-blocking site visit error:', err);
   }
+}
+
+/**
+ * TODAY'S TRAFFIC (Logged-in Today):
+ * Records unique users who opened the app while signed in today, deduplicated by user UID.
+ * The day boundary is midnight India time (Asia/Kolkata).
+ * Example: one user opens the site twice today -> Logged-in Today shows 1, Total Site Visits shows 2.
+ */
+export async function recordUserLoginToday(user: {
+  uid: string;
+  name?: string;
+  email?: string;
+  level?: string;
+}): Promise<void> {
+  if (typeof window === 'undefined' || !user?.uid) return;
+
+  const todayIndiaStr = getIndiaDateString();
+  const sessionFlagKey = `iitm_logged_in_today_${todayIndiaStr}_${user.uid}`;
+
+  // If already verified in this session tab, skip redundant writes
+  if (sessionStorage.getItem(sessionFlagKey)) {
+    return;
+  }
+  sessionStorage.setItem(sessionFlagKey, 'true');
+
+  try {
+    const docId = `${todayIndiaStr}_${user.uid}`;
+    const userDocRef = doc(db, 'dailyActiveUsers', docId);
+
+    // Save individual login record deduplicated by docId: ${todayIndiaStr}_${uid}
+    await setDoc(
+      userDocRef,
+      removeUndefinedFields({
+        date: todayIndiaStr,
+        userId: user.uid,
+        userName: user.name || 'Student',
+        userEmail: user.email || '',
+        userLevel: user.level || 'Foundation',
+        timestamp: new Date().toISOString(),
+      }),
+      { merge: true }
+    );
+
+    // Update dailyHistory in summary with arrayUnion(uid)
+    const summaryDocRef = doc(db, 'siteTraffic', 'summary');
+    try {
+      await updateDoc(summaryDocRef, {
+        [`dailyHistory.${todayIndiaStr}.date`]: todayIndiaStr,
+        [`dailyHistory.${todayIndiaStr}.loggedInUids`]: arrayUnion(user.uid),
+        lastUpdated: new Date().toISOString(),
+      });
+    } catch {
+      // Non-blocking
+    }
+  } catch (err) {
+    console.debug('[Traffic Tracker] Non-blocking daily active user record error:', err);
+  }
+}
+
+/**
+ * Backwards-compatible stub for any legacy callers.
+ * Does NOT track per-tab page views; instead delegates to recordSiteVisit if session not active.
+ */
+export async function recordPageView(options: {
+  page?: string;
+  path?: string;
+  userProfile?: UserProfile | null;
+}): Promise<void> {
+  await recordSiteVisit({ userProfile: options.userProfile });
 }
 
 /**
@@ -364,7 +339,10 @@ export function subscribeTrafficSummary(
                 uniqueVisitors: metric.uniqueVisitors ?? 0,
                 guestVisits: metric.guestVisits ?? 0,
                 studentVisits: metric.studentVisits ?? 0,
-                pageViews: metric.pageViews || {},
+                loggedInUids: Array.isArray(metric.loggedInUids) ? metric.loggedInUids : [],
+                loggedInCount: Array.isArray(metric.loggedInUids)
+                  ? metric.loggedInUids.length
+                  : (metric.studentVisits ?? 0),
               };
             }
           }
@@ -372,19 +350,17 @@ export function subscribeTrafficSummary(
         }
         callback(data);
       } else {
-        // Initialize default clean zero summary
         const initial = getZeroTrafficSummary();
         callback(initial);
         try {
           await setDoc(summaryDocRef, removeUndefinedFields(initial));
         } catch {
-          // ignore if user is not authorized to write
+          // ignore if user is not authorized
         }
       }
     },
     (err) => {
       console.warn('[Traffic Tracker] Snapshot warning:', err);
-      // provide local clean zero fallback so admin view never crashes
       callback(getZeroTrafficSummary());
     }
   );
@@ -393,7 +369,58 @@ export function subscribeTrafficSummary(
 }
 
 /**
- * Subscribe to the latest traffic log hits (e.g. last 30 logs)
+ * Subscribe to the real-time count of unique logged-in students today (IST date).
+ * Only accessible to admin.
+ */
+export function subscribeLoggedInTodayCount(
+  callback: (count: number) => void
+): () => void {
+  const todayIndiaStr = getIndiaDateString();
+  const q = query(collection(db, 'dailyActiveUsers'), where('date', '==', todayIndiaStr));
+
+  const unsubscribe = onSnapshot(
+    q,
+    (snap) => {
+      callback(snap.size);
+    },
+    (err) => {
+      console.warn('[Traffic Tracker] Logged-in today count subscription note:', err);
+    }
+  );
+
+  return unsubscribe;
+}
+
+/**
+ * Subscribe to the real-time count of registered users in the users collection.
+ * Only accessible to admin.
+ */
+export function subscribeRegisteredUsersCount(
+  callback: (count: number) => void
+): () => void {
+  const usersCol = collection(db, 'users');
+
+  const unsubscribe = onSnapshot(
+    usersCol,
+    (snap) => {
+      callback(snap.size);
+    },
+    async (err) => {
+      console.warn('[Traffic Tracker] Users count subscription note:', err);
+      try {
+        const snap = await getCountFromServer(usersCol);
+        callback(snap.data().count);
+      } catch (countErr) {
+        console.warn('[Traffic Tracker] Fallback getCountFromServer note:', countErr);
+      }
+    }
+  );
+
+  return unsubscribe;
+}
+
+/**
+ * Subscribe to the latest traffic log hits (last 30 logs)
  */
 export function subscribeTrafficLogs(
   limitCount: number = 30,
@@ -423,7 +450,7 @@ export function subscribeTrafficLogs(
 }
 
 /**
- * Reset traffic data to clean zero baseline (Pure Real Traffic)
+ * Reset traffic data to clean zero baseline
  */
 export async function resetTrafficToZero(): Promise<void> {
   const summaryDocRef = doc(db, 'siteTraffic', 'summary');
@@ -432,16 +459,7 @@ export async function resetTrafficToZero(): Promise<void> {
 }
 
 /**
- * Optional: Reset / Seed realistic baseline analytics (demo mode)
- */
-export async function resetAndSeedTrafficData(): Promise<void> {
-  const summaryDocRef = doc(db, 'siteTraffic', 'summary');
-  const fresh = generateSeedTrafficSummary();
-  await setDoc(summaryDocRef, removeUndefinedFields(fresh));
-}
-
-/**
- * Fallback recent logs (empty by default for real analytics)
+ * Fallback recent logs
  */
 export function generateFallbackRecentLogs(): TrafficLogEntry[] {
   return [];

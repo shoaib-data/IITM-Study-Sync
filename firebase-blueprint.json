@@ -141,7 +141,32 @@
         "device": { "type": "string" },
         "browser": { "type": "string" }
       },
-      "required": ["timestamp", "page", "visitorId"]
+      "required": ["timestamp", "visitorId"]
+    },
+    "DailyActiveUser": {
+      "title": "DailyActiveUser",
+      "description": "Unique daily student login deduplicated by India date and UID",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["date", "userId", "timestamp"]
+    },
+    "FriendCode": {
+      "title": "FriendCode",
+      "description": "Public friend code directory for peer search without listing users collection",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "friendCode": { "type": "string" }
+      },
+      "required": ["uid", "friendCode"]
     }
   },
   "firestore": {
@@ -152,6 +177,14 @@
     "/trafficLogs/{logId}": {
       "schema": { "$ref": "#/entities/TrafficLog" },
       "description": "Live traffic activity logs"
+    },
+    "/dailyActiveUsers/{docId}": {
+      "schema": { "$ref": "#/entities/DailyActiveUser" },
+      "description": "Unique daily student logins deduplicated by India date and UID"
+    },
+    "/friendCodes/{code}": {
+      "schema": { "$ref": "#/entities/FriendCode" },
+      "description": "Public friend code directory for peer search without listing users collection"
     },
     "/users/{uid}": {
       "schema": { "$ref": "#/entities/User" },

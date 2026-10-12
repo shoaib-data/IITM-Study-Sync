@@ -11,7 +11,7 @@ import { FriendsView } from './components/FriendsView';
 import { AdminPanelView } from './components/AdminPanelView';
 import { FriendDetailModal } from './components/FriendDetailModal';
 import { UserProfile } from './types';
-import { recordPageView } from './lib/trafficService';
+import { recordSiteVisit, recordUserLoginToday } from './lib/trafficService';
 import {
   GraduationCap,
   Calendar,
@@ -53,22 +53,24 @@ function AppContent() {
   const [signInLoading, setSignInLoading] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
 
-  // Automatically record traffic events
+  // 1. Record site session visit once per browser session (using sessionStorage)
+  useEffect(() => {
+    if (!loading) {
+      recordSiteVisit({ currentUser, userProfile });
+    }
+  }, [loading]);
+
+  // 2. Record daily unique signed-in user login (deduplicated by uid)
   useEffect(() => {
     if (currentUser && userProfile) {
-      const pageLabels: Record<ActiveTab, string> = {
-        dashboard: 'Dashboard',
-        myterm: 'My Term',
-        history: 'Course History',
-        newterm: 'Start New Term',
-        friends: 'Friends',
-        admin: 'Admin Console',
-      };
-      recordPageView({ page: pageLabels[activeTab] || 'Dashboard', userProfile });
-    } else if (!loading && !currentUser) {
-      recordPageView({ page: 'Sign In / Welcome', userProfile: null });
+      recordUserLoginToday({
+        uid: currentUser.uid,
+        name: userProfile.name,
+        email: userProfile.email,
+        level: userProfile.level,
+      });
     }
-  }, [activeTab, currentUser, userProfile, loading]);
+  }, [currentUser?.uid, userProfile?.name]);
 
   const handleSignInClick = async () => {
     setSignInLoading(true);

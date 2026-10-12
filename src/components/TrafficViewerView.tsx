@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import {
   subscribeTrafficSummary,
   subscribeTrafficLogs,
-  recordPageView,
+  subscribeLoggedInTodayCount,
+  subscribeRegisteredUsersCount,
+  recordSiteVisit,
   resetTrafficToZero,
-  resetAndSeedTrafficData,
+  getIndiaDateString,
 } from '../lib/trafficService';
 import { TrafficSummary, TrafficLogEntry, DailyTrafficMetric } from '../types';
 import {
@@ -17,13 +19,10 @@ import {
   Globe,
   ArrowUpRight,
   RefreshCw,
-  Sparkles,
   Download,
   Calendar,
-  Layers,
   CheckCircle2,
   Clock,
-  Shield,
   Zap,
   RotateCcw,
 } from 'lucide-react';
@@ -31,6 +30,8 @@ import {
 export const TrafficViewerView: React.FC = () => {
   const [summary, setSummary] = useState<TrafficSummary | null>(null);
   const [logs, setLogs] = useState<TrafficLogEntry[]>([]);
+  const [registeredUsersCount, setRegisteredUsersCount] = useState<number>(0);
+  const [loggedInTodayCount, setLoggedInTodayCount] = useState<number>(0);
   const [timeRange, setTimeRange] = useState<'7d' | '14d'>('7d');
   const [isSimulating, setIsSimulating] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -39,19 +40,23 @@ export const TrafficViewerView: React.FC = () => {
   useEffect(() => {
     const unsubSummary = subscribeTrafficSummary((data) => setSummary(data));
     const unsubLogs = subscribeTrafficLogs(25, (entries) => setLogs(entries));
+    const unsubUsers = subscribeRegisteredUsersCount((count) => setRegisteredUsersCount(count));
+    const unsubLoggedIn = subscribeLoggedInTodayCount((count) => setLoggedInTodayCount(count));
 
     return () => {
       unsubSummary();
       unsubLogs();
+      unsubUsers();
+      unsubLoggedIn();
     };
   }, []);
 
-  const handleSimulateHit = async (pageName: string, isGuest: boolean) => {
+  const handleSimulateHit = async (isGuest: boolean) => {
     setIsSimulating(true);
     setFeedback(null);
     try {
-      await recordPageView({
-        page: pageName,
+      await recordSiteVisit({
+        currentUser: isGuest ? null : { uid: 'sim_student_' + Math.random().toString(36).substring(2, 7) },
         userProfile: isGuest
           ? null
           : {
@@ -64,7 +69,7 @@ export const TrafficViewerView: React.FC = () => {
               isAdmin: false,
             },
       });
-      setFeedback(`Recorded test visit to "${pageName}" (${isGuest ? 'Guest' : 'Student'})`);
+      setFeedback(`Simulated new ${isGuest ? 'guest' : 'student'} session visit!`);
       setTimeout(() => setFeedback(null), 3000);
     } catch (err) {
       console.error(err);
@@ -88,13 +93,27 @@ export const TrafficViewerView: React.FC = () => {
 
   const handleExportData = () => {
     if (!summary) return;
-    const blob = new Blob([JSON.stringify({ summary, recentLogs: logs }, null, 2)], {
-      type: 'application/json',
-    });
+    const blob = new Blob(
+      [
+        JSON.stringify(
+          {
+            summary,
+            registeredUsers: registeredUsersCount,
+            loggedInToday: effectiveLoggedInToday,
+            recentLogs: logs,
+          },
+          null,
+          2
+        ),
+      ],
+      {
+        type: 'application/json',
+      }
+    );
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `iitm-study-sync-traffic-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `iitm-study-sync-traffic-${getIndiaDateString()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -108,6 +127,10 @@ export const TrafficViewerView: React.FC = () => {
     );
   }
 
+  const todayIndiaStr = getIndiaDateString();
+  const summaryTodayUidsCount = summary.dailyHistory?.[todayIndiaStr]?.loggedInUids?.length || 0;
+  const effectiveLoggedInToday = loggedInTodayCount > 0 ? loggedInTodayCount : summaryTodayUidsCount;
+
   // Calculate daily data based on selected time range
   const historyEntries: DailyTrafficMetric[] = Object.entries<Partial<DailyTrafficMetric>>(
     summary.dailyHistory || {}
@@ -118,7 +141,7 @@ export const TrafficViewerView: React.FC = () => {
       uniqueVisitors: metric?.uniqueVisitors ?? 0,
       guestVisits: metric?.guestVisits ?? 0,
       studentVisits: metric?.studentVisits ?? 0,
-      pageViews: metric?.pageViews || {},
+      loggedInCount: Array.isArray(metric?.loggedInUids) ? metric.loggedInUids.length : 0,
     }))
     .filter((entry) => Boolean(entry.date))
     .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -141,17 +164,10 @@ export const TrafficViewerView: React.FC = () => {
   const tabletPct = totalDeviceVisits > 0 ? Math.round((tabletCount / totalDeviceVisits) * 100) : 0;
 
   // Student vs Guest calculation
-  const totalStudents = historyEntries.reduce(
-    (acc, d) => acc + (d.studentVisits || 0),
-    0
-  );
-  const totalGuests = historyEntries.reduce(
-    (acc, d) => acc + (d.guestVisits || 0),
-    0
-  );
+  const totalStudents = historyEntries.reduce((acc, d) => acc + (d.studentVisits || 0), 0);
+  const totalGuests = historyEntries.reduce((acc, d) => acc + (d.guestVisits || 0), 0);
   const totalAudience = totalStudents + totalGuests;
   const studentPct = totalAudience > 0 ? Math.round((totalStudents / totalAudience) * 100) : 0;
-  const guestPct = totalAudience > 0 ? 100 - studentPct : 0;
 
   return (
     <div className="space-y-6">
@@ -165,7 +181,7 @@ export const TrafficViewerView: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
-                  Live Site Traffic &amp; Visitor Intelligence
+                  Live Site Traffic &amp; Student Analytics
                 </h2>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
@@ -173,23 +189,23 @@ export const TrafficViewerView: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                Real-time tracking of page visits, student engagement, devices, and peak academic study hours.
+                Real-time tracking of site sessions, registered students, devices, and IST daily engagement.
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Simulate Hit Button */}
+            {/* Simulate Session Button */}
             <div className="relative group">
               <button
                 id="traffic-simulate-hit-btn"
                 disabled={isSimulating}
-                onClick={() => handleSimulateHit('Dashboard', false)}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 flex items-center gap-1.5 transition-colors"
+                onClick={() => handleSimulateHit(false)}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 flex items-center gap-1.5 transition-colors cursor-pointer"
                 title="Send a sample student visit event"
               >
                 <Zap className="w-3.5 h-3.5 text-amber-500" />
-                <span>Simulate Hit</span>
+                <span>Simulate Visit</span>
               </button>
             </div>
 
@@ -198,7 +214,7 @@ export const TrafficViewerView: React.FC = () => {
               id="traffic-reset-btn"
               disabled={isResetting}
               onClick={handleResetToZero}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 flex items-center gap-1.5 transition-colors"
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200 flex items-center gap-1.5 transition-colors cursor-pointer"
               title="Reset all traffic analytics counters to zero"
             >
               <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
@@ -209,7 +225,7 @@ export const TrafficViewerView: React.FC = () => {
             <button
               id="traffic-export-btn"
               onClick={handleExportData}
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-white flex items-center gap-1.5 transition-colors shadow-2xs"
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-white flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export Report</span>
@@ -227,7 +243,7 @@ export const TrafficViewerView: React.FC = () => {
 
       {/* KPI Cards Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Page Views */}
+        {/* TOTAL SITE VISITS */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400 mb-1">
             <span className="text-xs font-medium uppercase tracking-wider">Total Site Visits</span>
@@ -236,41 +252,41 @@ export const TrafficViewerView: React.FC = () => {
           <div className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
             {summary.totalVisits.toLocaleString()}
           </div>
-          <div className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-medium">
-            <ArrowUpRight className="w-3.5 h-3.5" />
-            <span>Pure real visitor tracking</span>
+          <div className="flex items-center gap-1 text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Browser sessions recorded</span>
           </div>
         </div>
 
-        {/* Unique Visitors */}
+        {/* REGISTERED USERS (renamed from Unique Visitors) */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400 mb-1">
-            <span className="text-xs font-medium uppercase tracking-wider">Unique Visitors</span>
+            <span className="text-xs font-medium uppercase tracking-wider">Registered Users</span>
             <Users className="w-4 h-4 text-purple-500" />
           </div>
           <div className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
-            {summary.uniqueVisitors.toLocaleString()}
+            {registeredUsersCount.toLocaleString()}
           </div>
           <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-            Individual devices tracked
+            Total registered student accounts
           </div>
         </div>
 
-        {/* Today's Visits */}
+        {/* LOGGED-IN TODAY (renamed from Today's Traffic) */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400 mb-1">
-            <span className="text-xs font-medium uppercase tracking-wider">Today&apos;s Traffic</span>
+            <span className="text-xs font-medium uppercase tracking-wider">Logged-in Today</span>
             <Calendar className="w-4 h-4 text-amber-500" />
           </div>
           <div className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
-            {summary.todayVisits.toLocaleString()}
+            {effectiveLoggedInToday.toLocaleString()}
           </div>
           <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-            Recorded since midnight UTC
+            Resets at midnight IST (Asia/Kolkata)
           </div>
         </div>
 
-        {/* Active Now / Live Sessions */}
+        {/* LIVE ACTIVE STUDENTS (Kept as it is) */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 shadow-xs">
           <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400 mb-1">
             <span className="text-xs font-medium uppercase tracking-wider">Live Active Students</span>
@@ -291,10 +307,10 @@ export const TrafficViewerView: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-              <span>Traffic Velocity &amp; Daily Student Visits</span>
+              <span>Traffic Velocity &amp; Daily Student Sessions</span>
             </h3>
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              Daily visits over time. Higher spikes coincide with assignment deadlines &amp; quiz dates.
+              Daily site sessions over time based on Indian Standard Time (IST).
             </p>
           </div>
 
@@ -303,7 +319,7 @@ export const TrafficViewerView: React.FC = () => {
             <div className="inline-flex rounded-lg bg-zinc-100 dark:bg-zinc-800 p-0.5 border border-zinc-200 dark:border-zinc-700 text-xs font-medium">
               <button
                 onClick={() => setTimeRange('7d')}
-                className={`px-2.5 py-1 rounded-md transition-colors ${
+                className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
                   timeRange === '7d'
                     ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold'
                     : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
@@ -313,7 +329,7 @@ export const TrafficViewerView: React.FC = () => {
               </button>
               <button
                 onClick={() => setTimeRange('14d')}
-                className={`px-2.5 py-1 rounded-md transition-colors ${
+                className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
                   timeRange === '14d'
                     ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-2xs font-semibold'
                     : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
@@ -334,14 +350,14 @@ export const TrafficViewerView: React.FC = () => {
               const dateObj = new Date(metric.date + 'T12:00:00Z');
               const dayName = dateObj.toLocaleDateString(undefined, { weekday: 'short' });
               const dayNum = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-              const isToday = metric.date === new Date().toISOString().split('T')[0];
+              const isToday = metric.date === todayIndiaStr;
 
               return (
                 <div key={metric.date} className="flex-1 flex flex-col items-center h-full justify-end group relative">
                   {/* Tooltip on hover */}
                   <div className="absolute -top-16 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-[10px] py-1 px-2 rounded-md shadow-md whitespace-nowrap">
                     <div className="font-bold">{dayNum} ({dayName})</div>
-                    <div>Total Visits: {metric.totalVisits}</div>
+                    <div>Total Sessions: {metric.totalVisits}</div>
                     <div className="text-zinc-300 dark:text-zinc-600">
                       Students: {metric.studentVisits} &bull; Guests: {metric.guestVisits}
                     </div>
@@ -414,7 +430,7 @@ export const TrafficViewerView: React.FC = () => {
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-xs bg-emerald-500" />
-                <span className="text-zinc-600 dark:text-zinc-400">Today</span>
+                <span className="text-zinc-600 dark:text-zinc-400">Today (IST)</span>
               </div>
             </div>
 
@@ -430,53 +446,9 @@ export const TrafficViewerView: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid: Popular Features & Platform / Audience Insights */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Card 1: Popular Pages & Tab Engagement */}
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-              <Layers className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
-              <span>Feature &amp; Page Hits</span>
-            </h3>
-            <span className="text-[11px] font-medium text-zinc-400">Views</span>
-          </div>
-
-          <div className="space-y-3">
-            {Object.entries(summary.pageViews || {})
-              .sort(([, a], [, b]) => (b as number) - (a as number))
-              .map(([page, countVal]) => {
-                const count = countVal as number;
-                const totalPageViews =
-                  Object.values(summary.pageViews || {}).reduce(
-                    (a, b) => (a as number) + (b as number),
-                    0
-                  ) || 1;
-                const pct = Math.round((count / (totalPageViews as number)) * 100);
-                return (
-                  <div key={page} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-medium text-zinc-800 dark:text-zinc-200">{page}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-zinc-400 text-[11px]">{pct}%</span>
-                        <span className="font-semibold text-zinc-900 dark:text-zinc-100 font-mono">
-                          {count.toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-zinc-800 dark:bg-zinc-200"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-        </div>
-
-        {/* Card 2: Devices & Browsers */}
+      {/* Grid: Platform & Academic Level Breakdown (Per-tab page views removed completely) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Card 1: Devices & Browsers */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-xs space-y-5">
           <div>
             <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
@@ -552,7 +524,7 @@ export const TrafficViewerView: React.FC = () => {
           </div>
         </div>
 
-        {/* Card 3: Academic Levels & User Segmentation */}
+        {/* Card 2: Academic Levels & Student Audience */}
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-xs space-y-5">
           <div>
             <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
@@ -567,11 +539,10 @@ export const TrafficViewerView: React.FC = () => {
           <div className="space-y-3">
             {Object.entries(summary.levelDistribution || {}).map(([lvl, countVal]) => {
               const count = Number(countVal) || 0;
-              const totalLvl =
-                Object.values(summary.levelDistribution || {}).reduce<number>(
-                  (a, b) => a + (Number(b) || 0),
-                  0
-                );
+              const totalLvl = Object.values(summary.levelDistribution || {}).reduce<number>(
+                (a, b) => a + (Number(b) || 0),
+                0
+              );
               const lvlPct = totalLvl > 0 ? Math.round((count / totalLvl) * 100) : 0;
               return (
                 <div key={lvl} className="space-y-1">
@@ -595,7 +566,7 @@ export const TrafficViewerView: React.FC = () => {
           {/* Student vs Guest Progress */}
           <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-zinc-500 dark:text-zinc-400">Authenticated vs Guest Traffic</span>
+              <span className="text-zinc-500 dark:text-zinc-400">Authenticated vs Guest Sessions</span>
               <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">
                 {studentPct}% Students
               </span>
@@ -608,23 +579,23 @@ export const TrafficViewerView: React.FC = () => {
               />
             </div>
             <div className="flex justify-between text-[10px] text-zinc-400">
-              <span>{totalStudents.toLocaleString()} student visits</span>
-              <span>{totalGuests.toLocaleString()} guest visits</span>
+              <span>{totalStudents.toLocaleString()} student sessions</span>
+              <span>{totalGuests.toLocaleString()} guest sessions</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Real-time Activity Stream (Live Hits) */}
+      {/* Real-time Activity Stream (Live Sessions) */}
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-xs">
         <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/50 dark:bg-zinc-800/40">
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
             <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-              Live Activity Stream (Recent Visits)
+              Live Activity Stream (Recent Sessions)
             </h3>
             <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
-              ({logs.length} events loaded)
+              ({logs.length} sessions recorded)
             </span>
           </div>
           <span className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">
@@ -639,7 +610,7 @@ export const TrafficViewerView: React.FC = () => {
               <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/60 text-zinc-600 dark:text-zinc-300">
                 <th className="px-4 py-3 font-semibold">Time</th>
                 <th className="px-4 py-3 font-semibold">Visitor / Identity</th>
-                <th className="px-4 py-3 font-semibold">Page Viewed</th>
+                <th className="px-4 py-3 font-semibold">Activity</th>
                 <th className="px-4 py-3 font-semibold">Device &amp; Browser</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
               </tr>
@@ -673,7 +644,7 @@ export const TrafficViewerView: React.FC = () => {
                       </td>
                       <td className="px-4 py-2.5">
                         <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-medium">
-                          {log.page}
+                          {log.event || 'Site Session'}
                         </span>
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap">
@@ -708,8 +679,8 @@ export const TrafficViewerView: React.FC = () => {
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-zinc-500 dark:text-zinc-400">
                     <Activity className="w-6 h-6 mx-auto mb-2 text-zinc-400 opacity-60" />
-                    <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">No visitor sessions recorded yet</p>
-                    <p className="text-[11px] text-zinc-400 mt-1">Real student page visits and guest traffic will appear here automatically in real time.</p>
+                    <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">No session visits recorded yet</p>
+                    <p className="text-[11px] text-zinc-400 mt-1">Real student and guest browser sessions will appear here automatically.</p>
                   </td>
                 </tr>
               )}

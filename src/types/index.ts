@@ -145,8 +145,9 @@ export interface FriendSummary {
 export interface TrafficLogEntry {
   id: string;
   timestamp: string; // ISO string
-  page: string;
-  path: string;
+  event?: string;
+  page?: string;
+  path?: string;
   visitorId: string;
   userId?: string;
   userName?: string;
@@ -160,9 +161,11 @@ export interface TrafficLogEntry {
 }
 
 export interface DailyTrafficMetric {
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD in Asia/Kolkata
   totalVisits: number;
-  uniqueVisitors: number;
+  uniqueVisitors?: number;
+  loggedInCount?: number;
+  loggedInUids?: string[];
   guestVisits: number;
   studentVisits: number;
   pageViews?: Record<string, number>;
@@ -170,10 +173,11 @@ export interface DailyTrafficMetric {
 
 export interface TrafficSummary {
   totalVisits: number;
-  uniqueVisitors: number;
-  todayVisits: number;
+  uniqueVisitors?: number;
+  registeredUsers?: number;
+  todayVisits: number; // Logged-in today count
   activeSessions: number;
-  pageViews: Record<string, number>;
+  pageViews?: Record<string, number>;
   deviceDistribution: {
     desktop: number;
     mobile: number;

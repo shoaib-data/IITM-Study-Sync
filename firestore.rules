@@ -29,9 +29,10 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Users collection
+    // Users collection: only admin can list all users; authenticated users can read their own or friends' profiles
     match /users/{uid} {
-      allow read: if isSignedIn();
+      allow get: if isUser(uid) || isFriend(uid) || isAdmin();
+      allow list: if isAdmin();
       // Allow user creation by owner
       allow create: if isUser(uid);
       // Allow user update by owner, or allowing friend requests to update friends array
@@ -51,6 +52,14 @@ service cloud.firestore {
           allow write: if isUser(uid) || isAdmin();
         }
       }
+    }
+
+    // Friend code lookup document: allows direct friend search without listing the entire users collection
+    match /friendCodes/{code} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create, update: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow delete: if isAdmin();
     }
 
     // Course Catalog collection (admin-managed, read-only for all other authenticated users)
@@ -83,17 +92,25 @@ service cloud.firestore {
       );
     }
 
-    // Site Traffic analytics and logs
+    // Site Traffic analytics: only admin can read traffic stats
     match /siteTraffic/{docId} {
       allow read: if isAdmin();
       allow create, update: if true;
       allow delete: if isAdmin();
     }
 
+    // Traffic logs: only admin can read; users can only write their own visit record and cannot read anyone else's
     match /trafficLogs/{logId} {
       allow read: if isAdmin();
-      allow create: if true;
+      allow create: if isSignedIn() ? (request.resource.data.userId == request.auth.uid) : (request.resource.data.userId == null);
       allow update, delete: if isAdmin();
+    }
+
+    // Daily active users: only admin can read; students can only write their own login record and cannot read anyone else's
+    match /dailyActiveUsers/{docId} {
+      allow read: if isAdmin();
+      allow create, update: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin();
     }
   }
 }

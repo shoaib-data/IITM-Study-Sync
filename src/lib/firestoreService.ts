@@ -107,6 +107,25 @@ export async function ensureUserProfile(
       if (Object.keys(updates).length > 0) {
         await updateDoc(userRef, updates);
       }
+      // Ensure friendCode lookup document is kept in sync
+      if (existing.friendCode) {
+        try {
+          await setDoc(
+            doc(db, 'friendCodes', existing.friendCode),
+            removeUndefinedFields({
+              uid: existing.uid,
+              name: existing.name,
+              email: existing.email,
+              friendCode: existing.friendCode,
+              level: existing.level,
+              photoURL: existing.photoURL || null,
+            }),
+            { merge: true }
+          );
+        } catch {
+          // Non-blocking
+        }
+      }
       return existing;
     }
 
@@ -126,6 +145,24 @@ export async function ensureUserProfile(
     }
 
     await setDoc(userRef, removeUndefinedFields(newProfile));
+
+    // Save friendCode public lookup document
+    try {
+      await setDoc(
+        doc(db, 'friendCodes', newProfile.friendCode),
+        removeUndefinedFields({
+          uid: newProfile.uid,
+          name: newProfile.name,
+          email: newProfile.email,
+          friendCode: newProfile.friendCode,
+          level: newProfile.level,
+          photoURL: newProfile.photoURL || null,
+        })
+      );
+    } catch {
+      // Non-blocking
+    }
+
     return newProfile as UserProfile;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
@@ -154,6 +191,19 @@ export async function updateUserDisplayName(uid: string, name: string): Promise<
       name: cleanName,
       updatedAt: new Date().toISOString(),
     }));
+
+    // Also sync friendCodes document
+    try {
+      const uSnap = await getDoc(doc(db, 'users', uid));
+      if (uSnap.exists()) {
+        const fCode = uSnap.data()?.friendCode;
+        if (fCode) {
+          await updateDoc(doc(db, 'friendCodes', fCode), { name: cleanName });
+        }
+      }
+    } catch (codeErr) {
+      console.debug('Could not sync name to friendCodes doc:', codeErr);
+    }
 
     // Also keep any sent friendRequests in sync with the new display name
     try {
@@ -739,16 +789,29 @@ export async function updateCourseScoreField(
 // --- Friend Request & Friends System ---
 
 export async function findUserByFriendCode(code: string): Promise<UserProfile | null> {
-  const path = 'users';
+  const cleanCode = code.trim().toUpperCase();
+  // 1. Try direct document read on friendCodes (public single-doc lookup, no collection list permission needed)
   try {
-    const cleanCode = code.trim().toUpperCase();
+    const codeSnap = await getDoc(doc(db, 'friendCodes', cleanCode));
+    if (codeSnap.exists()) {
+      return codeSnap.data() as UserProfile;
+    }
+  } catch (err) {
+    console.debug('friendCodes direct lookup note:', err);
+  }
+
+  // 2. Fallback query on users collection (for admin or legacy accounts)
+  try {
     const q = query(collection(db, 'users'), where('friendCode', '==', cleanCode));
     const snap = await getDocs(q);
-    if (snap.empty) return null;
-    return snap.docs[0].data() as UserProfile;
+    if (!snap.empty) {
+      return snap.docs[0].data() as UserProfile;
+    }
   } catch (err) {
-    handleFirestoreError(err, OperationType.LIST, path);
+    console.debug('users fallback query note:', err);
   }
+
+  return null;
 }
 
 export async function sendFriendRequest(
