@@ -18,6 +18,7 @@ import {
   Sun,
   Moon,
   User as UserIcon,
+  FolderOpen,
 } from 'lucide-react';
 import { USER_LEVELS } from '../lib/constants';
 import { updateUserLevel } from '../lib/firestoreService';
@@ -29,6 +30,7 @@ export type ActiveTab =
   | 'history'
   | 'newterm'
   | 'friends'
+  | 'resources'
   | 'admin';
 
 interface NavbarProps {
@@ -115,6 +117,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab }) => {
     { id: 'history', label: 'Course History', icon: Clock },
     { id: 'newterm', label: 'Start New Term', icon: PlusCircle },
     { id: 'friends', label: 'Friends', icon: Users },
+    { id: 'resources', label: 'Resources', icon: FolderOpen },
   ];
 
   if (userProfile?.isAdmin) {

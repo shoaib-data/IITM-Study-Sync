@@ -188,3 +188,12 @@ export interface TrafficSummary {
   dailyHistory: Record<string, DailyTrafficMetric>;
   lastUpdated: string;
 }
+
+export interface ResourceItem {
+  id: string;
+  heading: string;
+  url: string;
+  description?: string;
+  order: number;
+  createdAt?: string;
+}

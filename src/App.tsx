@@ -8,6 +8,7 @@ import { MyTermView } from './components/MyTermView';
 import { CourseHistoryView } from './components/CourseHistoryView';
 import { StartNewTermView } from './components/StartNewTermView';
 import { FriendsView } from './components/FriendsView';
+import { ResourcesView } from './components/ResourcesView';
 import { AdminPanelView } from './components/AdminPanelView';
 import { FriendDetailModal } from './components/FriendDetailModal';
 import { UserProfile } from './types';
@@ -246,6 +247,8 @@ function AppContent() {
         )}
 
         {activeTab === 'friends' && <FriendsView />}
+
+        {activeTab === 'resources' && <ResourcesView />}
 
         {activeTab === 'admin' && userProfile.isAdmin && <AdminPanelView />}
       </main>
