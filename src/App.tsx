@@ -53,6 +53,7 @@ function AppContent() {
   const [inspectingFriend, setInspectingFriend] = useState<UserProfile | null>(null);
   const [signInLoading, setSignInLoading] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
+  const [logoError, setLogoError] = useState(false);
 
   // 1. Record site session visit once per browser session (using sessionStorage)
   useEffect(() => {
@@ -90,12 +91,19 @@ function AppContent() {
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center p-4">
         <div className="flex flex-col items-center gap-3">
-          <img
-            src="/src/assets/images/modern_study_logo_1792059368550.jpg"
-            alt="IITM Study Sync Logo"
-            referrerPolicy="no-referrer"
-            className="w-12 h-12 rounded-xl object-cover shadow-md border border-zinc-200/50 dark:border-zinc-700/50"
-          />
+          {!logoError ? (
+            <img
+              src="/logo.png"
+              alt="IITM Study Sync Logo"
+              referrerPolicy="no-referrer"
+              onError={() => setLogoError(true)}
+              className="w-12 h-12 rounded-xl object-cover shadow-md border border-zinc-200/50 dark:border-zinc-700/50"
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 flex items-center justify-center font-bold text-lg shadow-md">
+              DS
+            </div>
+          )}
           <div className="flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
             <Loader2 className="w-4 h-4 animate-spin text-zinc-600 dark:text-zinc-300" />
             <span>Loading IITM Study Sync...</span>
@@ -113,12 +121,19 @@ function AppContent() {
         <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-6 py-4">
           <div className="max-w-6xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <img
-                src="/src/assets/images/modern_study_logo_1792059368550.jpg"
-                alt="IITM Study Sync Logo"
-                referrerPolicy="no-referrer"
-                className="w-8 h-8 rounded-lg object-cover shadow-xs border border-zinc-200/50 dark:border-zinc-700/50"
-              />
+              {!logoError ? (
+                <img
+                  src="/logo.png"
+                  alt="IITM Study Sync Logo"
+                  referrerPolicy="no-referrer"
+                  onError={() => setLogoError(true)}
+                  className="w-8 h-8 rounded-lg object-cover shadow-xs border border-zinc-200/50 dark:border-zinc-700/50"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-lg bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 flex items-center justify-center font-bold text-sm shadow-xs">
+                  DS
+                </div>
+              )}
               <div>
                 <span className="font-bold text-zinc-900 dark:text-zinc-100 text-sm tracking-tight block leading-tight">
                   IITM Study Sync

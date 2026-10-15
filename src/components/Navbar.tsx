@@ -44,6 +44,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab }) => {
   const { triggerSaving, triggerSaved, triggerError } = useSaveStatus();
 
   const [copied, setCopied] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   const [levelMenuOpen, setLevelMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [displayNameInput, setDisplayNameInput] = useState('');
@@ -131,12 +132,19 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab }) => {
           {/* Logo & Branding */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => onSelectTab('dashboard')}>
-              <img
-                src="/src/assets/images/modern_study_logo_1792059368550.jpg"
-                alt="IITM Study Sync Logo"
-                referrerPolicy="no-referrer"
-                className="w-9 h-9 rounded-lg object-cover shadow-xs border border-zinc-200/50 dark:border-zinc-700/50"
-              />
+              {!logoError ? (
+                <img
+                  src="/logo.png"
+                  alt="IITM Study Sync Logo"
+                  referrerPolicy="no-referrer"
+                  onError={() => setLogoError(true)}
+                  className="w-9 h-9 rounded-lg object-cover shadow-xs border border-zinc-200/50 dark:border-zinc-700/50"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-lg bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 flex items-center justify-center font-bold text-base shadow-xs">
+                  DS
+                </div>
+              )}
               <div>
                 <span className="font-semibold text-zinc-900 dark:text-zinc-100 text-base tracking-tight block leading-tight">
                   IITM Study Sync
