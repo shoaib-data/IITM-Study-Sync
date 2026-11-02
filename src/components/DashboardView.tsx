@@ -14,6 +14,7 @@ import { ChecklistIconToggle } from './ChecklistIconToggle';
 import { CourseActionMenu } from './CourseActionMenu';
 import { ReplaceCourseModal } from './ReplaceCourseModal';
 import { UserAvatar } from './UserAvatar';
+import { ExamCountdownCard } from './ExamCountdownCard';
 import {
   Calendar as CalendarIcon,
   ChevronRight,
@@ -278,6 +279,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column: This Week's Courses & 3 Checklist Icons */}
           <div className="lg:col-span-2 space-y-4">
+            {/* On narrow screens, stack Exam Countdown above the checklist */}
+            <div className="block lg:hidden">
+              <ExamCountdownCard calendar={matchedCalendar} />
+            </div>
+
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
@@ -420,35 +426,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             )}
 
-            {/* Academic Milestones quick bar */}
+            {/* Academic Milestones quick bar - OPPE windows only */}
             {matchedCalendar && (
               <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-xs">
                 <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">
                   Upcoming Term Milestones
                 </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                  <div className="bg-zinc-50 dark:bg-zinc-800/60 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-800">
-                    <div className="text-zinc-500 dark:text-zinc-400 font-medium">Quiz 1 Exam</div>
-                    <div className="font-semibold text-zinc-900 dark:text-zinc-100 mt-0.5">
-                      {formatDateString(matchedCalendar.quiz1Date)}
-                    </div>
-                  </div>
-                  <div className="bg-zinc-50 dark:bg-zinc-800/60 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-800">
-                    <div className="text-zinc-500 dark:text-zinc-400 font-medium">Quiz 2 Exam</div>
-                    <div className="font-semibold text-zinc-900 dark:text-zinc-100 mt-0.5">
-                      {formatDateString(matchedCalendar.quiz2Date)}
-                    </div>
-                  </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div className="bg-zinc-50 dark:bg-zinc-800/60 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-800">
                     <div className="text-zinc-500 dark:text-zinc-400 font-medium">OPPE 1 Window</div>
                     <div className="font-semibold text-zinc-900 dark:text-zinc-100 mt-0.5">
-                      {formatDateString(matchedCalendar.oppe1Window?.start)}
+                      {matchedCalendar.oppe1Window?.start
+                        ? matchedCalendar.oppe1Window.end &&
+                          matchedCalendar.oppe1Window.end !== matchedCalendar.oppe1Window.start
+                          ? `${formatDateString(matchedCalendar.oppe1Window.start)} - ${formatDateString(matchedCalendar.oppe1Window.end)}`
+                          : formatDateString(matchedCalendar.oppe1Window.start)
+                        : 'TBA'}
                     </div>
                   </div>
                   <div className="bg-zinc-50 dark:bg-zinc-800/60 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-800">
-                    <div className="text-zinc-500 dark:text-zinc-400 font-medium">End Term Exam</div>
+                    <div className="text-zinc-500 dark:text-zinc-400 font-medium">OPPE 2 Window</div>
                     <div className="font-semibold text-zinc-900 dark:text-zinc-100 mt-0.5">
-                      {formatDateString(matchedCalendar.endTermDate)}
+                      {matchedCalendar.oppe2Window?.start
+                        ? matchedCalendar.oppe2Window.end &&
+                          matchedCalendar.oppe2Window.end !== matchedCalendar.oppe2Window.start
+                          ? `${formatDateString(matchedCalendar.oppe2Window.start)} - ${formatDateString(matchedCalendar.oppe2Window.end)}`
+                          : formatDateString(matchedCalendar.oppe2Window.start)
+                        : 'TBA'}
                     </div>
                   </div>
                 </div>
@@ -456,8 +460,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
           </div>
 
-          {/* Right Column: Friends' Progress Section */}
+          {/* Right Column: Exam Countdown & Friends' Progress Section */}
           <div className="space-y-4">
+            {/* Exam Countdown Card directly above Friends' Progress */}
+            <div className="hidden lg:block">
+              <ExamCountdownCard calendar={matchedCalendar} />
+            </div>
+
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
