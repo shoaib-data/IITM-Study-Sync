@@ -52,6 +52,11 @@ service cloud.firestore {
           allow write: if isUser(uid) || isAdmin();
         }
       }
+
+      // Subcollection: tasks (Planner) - only the signed-in owner can read, create, update, or delete. Friends and admin cannot read them.
+      match /tasks/{taskId} {
+        allow read, write: if isUser(uid);
+      }
     }
 
     // Friend code lookup document: allows direct friend search without listing the entire users collection

@@ -19,6 +19,7 @@ import {
   Moon,
   User as UserIcon,
   FolderOpen,
+  CalendarDays,
 } from 'lucide-react';
 import { USER_LEVELS } from '../lib/constants';
 import { updateUserLevel } from '../lib/firestoreService';
@@ -27,6 +28,7 @@ import { UserLevel } from '../types';
 export type ActiveTab =
   | 'dashboard'
   | 'myterm'
+  | 'planner'
   | 'history'
   | 'newterm'
   | 'friends'
@@ -115,6 +117,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, onSelectTab }) => {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: BookOpen },
     { id: 'myterm', label: 'My Term', icon: Calendar },
+    { id: 'planner', label: 'Planner', icon: CalendarDays },
     { id: 'history', label: 'Course History', icon: Clock },
     { id: 'newterm', label: 'Start New Term', icon: PlusCircle },
     { id: 'friends', label: 'Friends', icon: Users },

@@ -5,6 +5,7 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { Navbar, ActiveTab } from './components/Navbar';
 import { DashboardView } from './components/DashboardView';
 import { MyTermView } from './components/MyTermView';
+import { PlannerView } from './components/PlannerView';
 import { CourseHistoryView } from './components/CourseHistoryView';
 import { StartNewTermView } from './components/StartNewTermView';
 import { FriendsView } from './components/FriendsView';
@@ -255,11 +256,14 @@ function AppContent() {
           <DashboardView
             onNavigateToNewTerm={() => setActiveTab('newterm')}
             onNavigateToMyTerm={() => setActiveTab('myterm')}
+            onNavigateToPlanner={() => setActiveTab('planner')}
             onSelectFriend={(f) => setInspectingFriend(f)}
           />
         )}
 
         {activeTab === 'myterm' && <MyTermView />}
+
+        {activeTab === 'planner' && <PlannerView />}
 
         {activeTab === 'history' && <CourseHistoryView />}
 

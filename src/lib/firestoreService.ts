@@ -27,6 +27,7 @@ import {
   CourseScores,
   FinalGrade,
   AssessmentType,
+  UserTask,
 } from '../types';
 import { INITIAL_COURSE_CATALOG, INITIAL_CALENDAR_TERMS, COURSE_COLORS } from './constants';
 
@@ -1010,3 +1011,97 @@ export function subscribeFriendsList(
     unsubs.forEach((u) => u());
   };
 }
+
+// --- Planner Tasks ---
+
+export function subscribeUserTasks(
+  uid: string,
+  callback: (tasks: UserTask[]) => void
+): () => void {
+  const path = `users/${uid}/tasks`;
+  const tasksRef = collection(db, 'users', uid, 'tasks');
+  return onSnapshot(
+    tasksRef,
+    (snapshot) => {
+      const tasks: UserTask[] = [];
+      snapshot.forEach((docSnap) => {
+        tasks.push({
+          id: docSnap.id,
+          ...(docSnap.data() as Omit<UserTask, 'id'>),
+        });
+      });
+      // Sort by date ascending, then createdAt
+      tasks.sort((a, b) => {
+        if (a.date !== b.date) {
+          return a.date.localeCompare(b.date);
+        }
+        return (a.createdAt || '').localeCompare(b.createdAt || '');
+      });
+      callback(tasks);
+    },
+    (err) => {
+      handleFirestoreError(err, OperationType.GET, path);
+    }
+  );
+}
+
+export async function addUserTask(
+  uid: string,
+  taskData: Omit<UserTask, 'id'>
+): Promise<string> {
+  const path = `users/${uid}/tasks`;
+  try {
+    const tasksRef = collection(db, 'users', uid, 'tasks');
+    const existingSnap = await getDocs(tasksRef);
+    if (existingSnap.size >= 300) {
+      throw new Error('Task limit reached. Each user is limited to a maximum of 300 tasks.');
+    }
+
+    const newDocRef = doc(tasksRef);
+    const cleaned = removeUndefinedFields({
+      title: taskData.title.trim().slice(0, 120),
+      date: taskData.date,
+      done: Boolean(taskData.done),
+      courseId: taskData.courseId || null,
+      courseName: taskData.courseName || null,
+      createdAt: taskData.createdAt || new Date().toISOString(),
+    });
+
+    await setDoc(newDocRef, cleaned);
+    return newDocRef.id;
+  } catch (err: any) {
+    if (err.message && err.message.includes('Task limit reached')) {
+      throw err;
+    }
+    handleFirestoreError(err, OperationType.WRITE, path);
+    throw err;
+  }
+}
+
+export async function updateUserTask(
+  uid: string,
+  taskId: string,
+  updates: Partial<Omit<UserTask, 'id'>>
+): Promise<void> {
+  const path = `users/${uid}/tasks/${taskId}`;
+  try {
+    const taskDocRef = doc(db, 'users', uid, 'tasks', taskId);
+    const cleaned = removeUndefinedFields({
+      ...updates,
+      ...(updates.title ? { title: updates.title.trim().slice(0, 120) } : {}),
+    });
+    await updateDoc(taskDocRef, cleaned);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, path);
+  }
+}
+
+export async function deleteUserTask(uid: string, taskId: string): Promise<void> {
+  const path = `users/${uid}/tasks/${taskId}`;
+  try {
+    await deleteDoc(doc(db, 'users', uid, 'tasks', taskId));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  }
+}
+

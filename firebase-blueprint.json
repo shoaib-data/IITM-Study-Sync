@@ -180,9 +180,27 @@
         "createdAt": { "type": "string" }
       },
       "required": ["heading", "url", "order"]
+    },
+    "UserTask": {
+      "title": "UserTask",
+      "description": "Student planner task item with date, status, and optional course tag",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 120 },
+        "date": { "type": "string", "description": "India date YYYY-MM-DD" },
+        "done": { "type": "boolean" },
+        "courseId": { "type": "string" },
+        "courseName": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "date", "done", "createdAt"]
     }
   },
   "firestore": {
+    "/users/{uid}/tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/UserTask" },
+      "description": "Private student planner task documents"
+    },
     "/resources/{resourceId}": {
       "schema": { "$ref": "#/entities/Resource" },
       "description": "Curated academic and reference resources"

@@ -197,3 +197,14 @@ export interface ResourceItem {
   order: number;
   createdAt?: string;
 }
+
+export interface UserTask {
+  id: string;
+  title: string;
+  date: string; // "YYYY-MM-DD", India date, never a timestamp
+  done: boolean;
+  courseId?: string;
+  courseName?: string;
+  createdAt: string;
+}
+

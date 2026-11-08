@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useSaveStatus } from '../context/SaveStatusContext';
 import {
@@ -7,14 +7,17 @@ import {
   subscribeCalendarTerms,
   toggleWeeklyChecklist,
   subscribeFriendsList,
+  subscribeUserTasks,
+  updateUserTask,
 } from '../lib/firestoreService';
-import { UserTerm, UserCourse, CalendarTerm, UserProfile } from '../types';
-import { calculateTermWeek, formatDateString } from '../lib/dateUtils';
+import { UserTerm, UserCourse, CalendarTerm, UserProfile, UserTask } from '../types';
+import { calculateTermWeek, formatDateString, getTodayIST, getMsUntilNextMidnightIST } from '../lib/dateUtils';
 import { ChecklistIconToggle } from './ChecklistIconToggle';
 import { CourseActionMenu } from './CourseActionMenu';
 import { ReplaceCourseModal } from './ReplaceCourseModal';
 import { UserAvatar } from './UserAvatar';
 import { ExamCountdownCard } from './ExamCountdownCard';
+import { TodayTasksCard } from './TodayTasksCard';
 import {
   Calendar as CalendarIcon,
   ChevronRight,
@@ -31,6 +34,7 @@ import { db } from '../lib/firebase';
 interface DashboardViewProps {
   onNavigateToNewTerm: () => void;
   onNavigateToMyTerm: () => void;
+  onNavigateToPlanner?: () => void;
   onSelectFriend: (friend: UserProfile) => void;
 }
 
@@ -46,6 +50,7 @@ interface FriendProgressSummary {
 export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigateToNewTerm,
   onNavigateToMyTerm,
+  onNavigateToPlanner,
   onSelectFriend,
 }) => {
   const { currentUser, userProfile } = useAuth();
@@ -57,6 +62,68 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [friendsProgress, setFriendsProgress] = useState<FriendProgressSummary[]>([]);
   const [loadingFriends, setLoadingFriends] = useState(false);
   const [courseToReplace, setCourseToReplace] = useState<UserCourse | null>(null);
+
+  // Today's tasks state & IST date tracker
+  const [tasks, setTasks] = useState<UserTask[]>([]);
+  const [todayIST, setTodayIST] = useState<string>(() => getTodayIST());
+
+  // Keep today's date fresh in IST and recompute at midnight IST if tab stays open
+  useEffect(() => {
+    let timerId: NodeJS.Timeout;
+
+    const scheduleNextMidnight = () => {
+      const ms = getMsUntilNextMidnightIST();
+      timerId = setTimeout(() => {
+        setTodayIST(getTodayIST());
+        scheduleNextMidnight();
+      }, ms);
+    };
+
+    scheduleNextMidnight();
+
+    const handleSync = () => {
+      const current = getTodayIST();
+      setTodayIST((prev) => (prev !== current ? current : prev));
+    };
+
+    window.addEventListener('focus', handleSync);
+    document.addEventListener('visibilitychange', handleSync);
+
+    return () => {
+      clearTimeout(timerId);
+      window.removeEventListener('focus', handleSync);
+      document.removeEventListener('visibilitychange', handleSync);
+    };
+  }, []);
+
+  // Realtime subscription to user tasks
+  useEffect(() => {
+    if (!currentUser) {
+      setTasks([]);
+      return;
+    }
+    const unsubTasks = subscribeUserTasks(currentUser.uid, (taskList) => {
+      setTasks(taskList);
+    });
+    return () => unsubTasks();
+  }, [currentUser]);
+
+  // Tasks whose date is today in India time
+  const todayTasks = useMemo(() => {
+    return tasks.filter((t) => t.date === todayIST);
+  }, [tasks, todayIST]);
+
+  const handleToggleTodayTask = async (task: UserTask) => {
+    if (!currentUser) return;
+    triggerSaving();
+    try {
+      await updateUserTask(currentUser.uid, task.id, { done: !task.done });
+      triggerSaved();
+    } catch (err) {
+      console.error('Failed to update task:', err);
+      triggerError('Failed to update task');
+    }
+  };
 
   // Subscribe to user terms
   useEffect(() => {
@@ -279,9 +346,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column: This Week's Courses & 3 Checklist Icons */}
           <div className="lg:col-span-2 space-y-4">
-            {/* On narrow screens, stack Exam Countdown above the checklist */}
-            <div className="block lg:hidden">
+            {/* On narrow screens, stack Exam Countdown & Today's tasks above the checklist */}
+            <div className="block lg:hidden space-y-4">
               <ExamCountdownCard calendar={matchedCalendar} />
+              <TodayTasksCard
+                tasks={todayTasks}
+                onToggleTask={handleToggleTodayTask}
+                onNavigateToPlanner={onNavigateToPlanner}
+              />
             </div>
 
             <div className="flex items-center justify-between">
@@ -462,9 +534,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           {/* Right Column: Exam Countdown & Friends' Progress Section */}
           <div className="space-y-4">
-            {/* Exam Countdown Card directly above Friends' Progress */}
+            {/* Exam Countdown Card */}
             <div className="hidden lg:block">
               <ExamCountdownCard calendar={matchedCalendar} />
+            </div>
+
+            {/* Today's tasks card (placed between Exam Countdown and Friends' Progress) */}
+            <div className="hidden lg:block">
+              <TodayTasksCard
+                tasks={todayTasks}
+                onToggleTask={handleToggleTodayTask}
+                onNavigateToPlanner={onNavigateToPlanner}
+              />
             </div>
 
             <div className="flex items-center justify-between">
