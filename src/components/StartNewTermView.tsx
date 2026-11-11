@@ -324,9 +324,12 @@ export const StartNewTermView: React.FC<StartNewTermViewProps> = ({ onTermStarte
       <div className="bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl p-5 flex items-start gap-3.5 text-xs text-amber-900 dark:text-amber-200">
         <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
         <div className="space-y-1">
-          <div className="font-bold">Term Archival Rule:</div>
+          <div className="font-bold">Term Transition &amp; Task Reset:</div>
           <div>
-            Starting a new term will automatically set your previous active term&apos;s status to archived (<code className="bg-amber-100/70 dark:bg-amber-900/60 px-1 py-0.5 rounded">isActive: false</code>). Its score records and weekly milestones will be preserved read-only in your <strong>Course History</strong>.
+            Starting a new term will automatically archive your previous term (<code className="bg-amber-100/70 dark:bg-amber-900/60 px-1 py-0.5 rounded">isActive: false</code>). Its scores and weekly records are preserved in <strong>Course History</strong>.
+          </div>
+          <div className="text-amber-800 dark:text-amber-300 font-medium pt-0.5">
+            Previous term tasks in your Planner are removed so your task count resets and you have the full 300-task limit available for the new term.
           </div>
         </div>
       </div>

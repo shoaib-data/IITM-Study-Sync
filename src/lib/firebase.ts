@@ -21,7 +21,11 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
-export const ADMIN_EMAIL = 'syedshoaib.outlook@gmail.com';
+export const ADMIN_EMAILS = [
+  'syedshoaib.outlook@gmail.com',
+  'shoaibsyedx@gmail.com',
+];
+export const ADMIN_EMAIL = ADMIN_EMAILS[0];
 
 // Connection test as mandated by Firebase skill
 export async function testConnection() {
@@ -70,5 +74,5 @@ export function generateFriendCode(): string {
 // Helper to determine admin status
 export function checkIsAdmin(email?: string | null): boolean {
   if (!email) return false;
-  return email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  return ADMIN_EMAILS.some((adminEmail) => adminEmail.toLowerCase() === email.toLowerCase());
 }

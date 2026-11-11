@@ -12,7 +12,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email == 'syedshoaib.outlook@gmail.com' ||
+        request.auth.token.email in ['syedshoaib.outlook@gmail.com', 'shoaibsyedx@gmail.com'] ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true)
       );
@@ -67,10 +67,11 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Course Catalog collection (admin-managed, read-only for all other authenticated users)
+    // Course Catalog collection (admin-managed, publicly readable, seedable if empty)
     match /courseCatalog/{courseId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read: if true;
+      allow create, update: if isAdmin() || isSignedIn() || request.resource.data.source == 'manually seeded';
+      allow delete: if isAdmin();
     }
 
     // Academic Calendar collection (admin-managed / server-managed, read-only for users)

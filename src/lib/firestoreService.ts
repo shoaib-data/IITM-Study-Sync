@@ -245,7 +245,6 @@ export function subscribeCourseCatalog(callback: (courses: CourseCatalogItem[]) 
 }
 
 export async function seedCourseCatalogIfEmpty(): Promise<void> {
-  const path = 'courseCatalog';
   try {
     const snap = await getDocs(collection(db, 'courseCatalog'));
     if (snap.empty) {
@@ -255,6 +254,7 @@ export async function seedCourseCatalogIfEmpty(): Promise<void> {
         const ref = doc(collection(db, 'courseCatalog'));
         batch.set(ref, removeUndefinedFields({
           ...item,
+          source: 'manually seeded',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }));
@@ -262,7 +262,7 @@ export async function seedCourseCatalogIfEmpty(): Promise<void> {
       await batch.commit();
     }
   } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, path);
+    console.warn('Could not check or seed course catalog:', err);
   }
 }
 
@@ -330,7 +330,6 @@ export function subscribeCalendarTerms(callback: (terms: CalendarTerm[]) => void
 }
 
 export async function seedCalendarIfEmpty(): Promise<void> {
-  const path = 'calendar';
   try {
     const snap = await getDocs(collection(db, 'calendar'));
     if (snap.empty) {
@@ -351,7 +350,7 @@ export async function seedCalendarIfEmpty(): Promise<void> {
       await batch.commit();
     }
   } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, path);
+    console.warn('Could not check or seed calendar:', err);
   }
 }
 
@@ -543,6 +542,10 @@ export async function startNewTerm(
     }));
 
     await batch.commit();
+
+    // 5. Remove previous term tasks from users/{uid}/tasks so limit resets to 300
+    await clearUserTasks(uid);
+
     return termId;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, userPath);
@@ -1104,4 +1107,31 @@ export async function deleteUserTask(uid: string, taskId: string): Promise<void>
     handleFirestoreError(err, OperationType.DELETE, path);
   }
 }
+
+/**
+ * Removes all tasks for a user, resetting their task count to 0 and their limit to 300.
+ * Invoked when starting a new term.
+ */
+export async function clearUserTasks(uid: string): Promise<void> {
+  const path = `users/${uid}/tasks`;
+  try {
+    const tasksRef = collection(db, 'users', uid, 'tasks');
+    const tasksSnap = await getDocs(tasksRef);
+    if (tasksSnap.empty) return;
+
+    const taskDocs = tasksSnap.docs;
+    const CHUNK_SIZE = 400;
+    for (let i = 0; i < taskDocs.length; i += CHUNK_SIZE) {
+      const deleteBatch = writeBatch(db);
+      const chunk = taskDocs.slice(i, i + CHUNK_SIZE);
+      chunk.forEach((d) => {
+        deleteBatch.delete(d.ref);
+      });
+      await deleteBatch.commit();
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  }
+}
+
 
