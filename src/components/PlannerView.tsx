@@ -349,14 +349,14 @@ export const PlannerView: React.FC = () => {
     setSelectedDate(todayIST);
   };
 
-  // Month grid calculation (Mon-Sun)
+  // Month grid calculation (Sun-Sat)
   const monthGrid = useMemo(() => {
     const { year, month } = viewDate;
 
     // First day of this month
     const firstDayUtc = new Date(Date.UTC(year, month, 1, 12, 0, 0));
-    // Monday is 0, Sunday is 6
-    const startDayOfWeek = (firstDayUtc.getUTCDay() + 6) % 7;
+    // Sunday is 0, Saturday is 6
+    const startDayOfWeek = firstDayUtc.getUTCDay();
 
     // Total days in current month
     const totalDaysInMonth = new Date(Date.UTC(year, month + 1, 0, 12, 0, 0)).getUTCDate();
@@ -667,15 +667,15 @@ export const PlannerView: React.FC = () => {
               </button>
             </div>
 
-            {/* Weekday Row (Mon-Sun) */}
+            {/* Weekday Row (Sun-Sat) */}
             <div className="grid grid-cols-7 gap-1 sm:gap-2 text-center text-xs font-semibold text-zinc-400 uppercase tracking-wider pb-1">
+              <div>Sun</div>
               <div>Mon</div>
               <div>Tue</div>
               <div>Wed</div>
               <div>Thu</div>
               <div>Fri</div>
               <div>Sat</div>
-              <div>Sun</div>
             </div>
 
             {/* Calendar Grid Cells */}
