@@ -497,7 +497,7 @@ export const ResourcesView: React.FC = () => {
                         {/* Link below heading (clickable, opens in new tab with rel="noopener noreferrer") */}
                         <div className="mt-1.5">
                           <a
-                            href={item.url}
+                            href={validateResourceUrl(item.url).isValid ? item.url : '#'}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline break-all group transition-colors"

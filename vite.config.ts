@@ -43,11 +43,36 @@ function calendarApiPlugin(): Plugin {
 
         if (req.url === '/api/notify-admin' && req.method === 'POST') {
           let body = '';
-          req.on('data', chunk => { body += chunk; });
+          let aborted = false;
+          req.on('data', chunk => {
+            body += chunk;
+            if (body.length > 16 * 1024) {
+              aborted = true;
+              res.statusCode = 413;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Payload too large' }));
+              req.destroy();
+            }
+          });
           req.on('end', () => {
-            console.log('[Admin Notification Alert]', body);
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ success: true, message: 'Admin alert dispatched' }));
+            if (aborted) return;
+            try {
+              const parsed = body ? JSON.parse(body) : {};
+              const reason = typeof parsed.reason === 'string' ? parsed.reason.trim().slice(0, 200) : '';
+              if (!reason) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ success: false, error: 'Invalid notification reason' }));
+                return;
+              }
+              console.log('[Admin Notification Alert]', { reason });
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true, message: 'Admin alert dispatched' }));
+            } catch {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Invalid JSON body' }));
+            }
           });
           return;
         }
