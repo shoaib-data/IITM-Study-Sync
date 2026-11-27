@@ -9,8 +9,10 @@ import {
   subscribeUserTerms,
   subscribeCalendarTerms,
   subscribeUserCourses,
+  subscribeUserStickyNotes,
 } from '../lib/firestoreService';
-import { UserTask, UserTerm, CalendarTerm, UserCourse } from '../types';
+import { UserTask, UserTerm, CalendarTerm, UserCourse, StickyNote } from '../types';
+import { StickyNotesSection } from './StickyNotesSection';
 import { getTodayIST } from '../lib/dateUtils';
 import {
   CalendarDays,
@@ -142,6 +144,7 @@ export const PlannerView: React.FC = () => {
   const [userTerms, setUserTerms] = useState<UserTerm[]>([]);
   const [calendarTerms, setCalendarTerms] = useState<CalendarTerm[]>([]);
   const [activeCourses, setActiveCourses] = useState<UserCourse[]>([]);
+  const [stickyNotes, setStickyNotes] = useState<StickyNote[]>([]);
 
   // Mobile bottom sheet state
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -209,6 +212,18 @@ export const PlannerView: React.FC = () => {
     });
     return () => unsub();
   }, [currentUser, activeTerm]);
+
+  // 5. Subscribe to user sticky notes (subject-specific + persistent 'general')
+  useEffect(() => {
+    if (!currentUser) {
+      setStickyNotes([]);
+      return;
+    }
+    const unsub = subscribeUserStickyNotes(currentUser.uid, (notes) => {
+      setStickyNotes(notes);
+    });
+    return () => unsub();
+  }, [currentUser]);
 
   // Map exam dates from linked calendar documents
   const examDatesMap = useMemo(() => {
@@ -821,6 +836,16 @@ export const PlannerView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* STICKY NOTES SECTION (Full width directly below Calendar + Legend) */}
+      {currentUser && (
+        <StickyNotesSection
+          uid={currentUser.uid}
+          termId={activeTerm?.termId}
+          courses={activeCourses}
+          stickyNotes={stickyNotes}
+        />
+      )}
 
       {/* MOBILE BOTTOM SHEET FOR DAY PANEL */}
       {mobileDrawerOpen && (

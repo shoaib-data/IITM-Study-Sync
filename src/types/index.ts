@@ -219,4 +219,13 @@ export interface StudyLogEntry {
   createdAt: string;
 }
 
-
+export interface StickyNote {
+  id: string; // 'general' or courseId
+  title: string;
+  content: string;
+  isGeneral: boolean;
+  courseId?: string;
+  termId?: string;
+  color?: string;
+  updatedAt: string;
+}

@@ -29,6 +29,7 @@ import {
   AssessmentType,
   UserTask,
   StudyLogEntry,
+  StickyNote,
 } from '../types';
 import { INITIAL_COURSE_CATALOG, INITIAL_CALENDAR_TERMS, COURSE_COLORS } from './constants';
 
@@ -544,9 +545,10 @@ export async function startNewTerm(
 
     await batch.commit();
 
-    // 5. Remove previous term tasks & study logs so fresh term starts clean
+    // 5. Remove previous term tasks & study logs, and reset subject-specific sticky notes (keeping 'general')
     await clearUserTasks(uid);
     await clearUserStudyLogs(uid);
+    await resetTermStickyNotes(uid, termId, selectedCourses);
 
     return termId;
   } catch (err) {
@@ -1232,6 +1234,117 @@ export async function clearUserStudyLogs(uid: string): Promise<void> {
     handleFirestoreError(err, OperationType.DELETE, path);
   }
 }
+
+// --- Planner Sticky Notes ---
+
+export function subscribeUserStickyNotes(
+  uid: string,
+  callback: (notes: StickyNote[]) => void
+): () => void {
+  const path = `users/${uid}/stickyNotes`;
+  const notesRef = collection(db, 'users', uid, 'stickyNotes');
+  return onSnapshot(
+    notesRef,
+    (snapshot) => {
+      const notes: StickyNote[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Omit<StickyNote, 'id'>;
+        notes.push({
+          id: docSnap.id,
+          ...data,
+        });
+      });
+      callback(notes);
+    },
+    (err) => {
+      handleFirestoreError(err, OperationType.LIST, path);
+    }
+  );
+}
+
+export async function saveUserStickyNote(
+  uid: string,
+  noteId: string,
+  noteData: Omit<StickyNote, 'id'>
+): Promise<void> {
+  const path = `users/${uid}/stickyNotes/${noteId}`;
+  try {
+    const noteRef = doc(db, 'users', uid, 'stickyNotes', noteId);
+    const cleaned = removeUndefinedFields({
+      title: (noteData.title || (noteId === 'general' ? 'General / Scratchpad' : 'Course Notes')).slice(0, 200),
+      content: (noteData.content ?? '').slice(0, 5000),
+      isGeneral: Boolean(noteData.isGeneral),
+      courseId: noteData.courseId ? noteData.courseId.slice(0, 128) : undefined,
+      termId: noteData.termId ? noteData.termId.slice(0, 64) : undefined,
+      color: noteData.color ? noteData.color.slice(0, 32) : undefined,
+      updatedAt: noteData.updatedAt || new Date().toISOString(),
+    });
+    await setDoc(noteRef, cleaned);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+    throw err;
+  }
+}
+
+/**
+ * Deletes all subject-specific sticky notes from the previous term and generates
+ * fresh empty sticky-note documents for the new term's selected courses.
+ * NEVER deletes or clears the permanent 'general' sticky note.
+ */
+export async function resetTermStickyNotes(
+  uid: string,
+  termId: string,
+  selectedCourses: CourseCatalogItem[]
+): Promise<void> {
+  const path = `users/${uid}/stickyNotes`;
+  try {
+    const notesRef = collection(db, 'users', uid, 'stickyNotes');
+    const existingSnap = await getDocs(notesRef);
+
+    // 1. Delete all subject-specific sticky notes (preserve 'general')
+    const toDelete = existingSnap.docs.filter((d) => {
+      const data = d.data() as Partial<StickyNote>;
+      return d.id !== 'general' && data.isGeneral !== true;
+    });
+
+    const CHUNK_SIZE = 400;
+    for (let i = 0; i < toDelete.length; i += CHUNK_SIZE) {
+      const delBatch = writeBatch(db);
+      toDelete.slice(i, i + CHUNK_SIZE).forEach((d) => {
+        delBatch.delete(d.ref);
+      });
+      await delBatch.commit();
+    }
+
+    // 2. Initialize fresh empty sticky-note cards for the new term's selected courses
+    if (selectedCourses.length > 0) {
+      const nowIso = new Date().toISOString();
+      for (let i = 0; i < selectedCourses.length; i += CHUNK_SIZE) {
+        const createBatch = writeBatch(db);
+        selectedCourses.slice(i, i + CHUNK_SIZE).forEach((catCourse, idx) => {
+          const globalIndex = i + idx;
+          const noteRef = doc(db, 'users', uid, 'stickyNotes', catCourse.id);
+          createBatch.set(
+            noteRef,
+            removeUndefinedFields({
+              title: catCourse.name.slice(0, 200),
+              content: '',
+              isGeneral: false,
+              courseId: catCourse.id.slice(0, 128),
+              termId: termId.slice(0, 64),
+              color: COURSE_COLORS[globalIndex % COURSE_COLORS.length],
+              updatedAt: nowIso,
+            })
+          );
+        });
+        await createBatch.commit();
+      }
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+}
+
 
 
 

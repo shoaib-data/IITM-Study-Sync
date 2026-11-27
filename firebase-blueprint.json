@@ -209,6 +209,21 @@
         "createdAt": { "type": "string" }
       },
       "required": ["termId", "date", "courseName", "summary", "createdAt"]
+    },
+    "StickyNote": {
+      "title": "StickyNote",
+      "description": "Planner sticky note for an active-term course or permanent General scratchpad",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 200 },
+        "content": { "type": "string", "maxLength": 5000 },
+        "isGeneral": { "type": "boolean" },
+        "courseId": { "type": "string", "maxLength": 128 },
+        "termId": { "type": "string", "maxLength": 64 },
+        "color": { "type": "string", "maxLength": 32 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["title", "content", "isGeneral", "updatedAt"]
     }
   },
   "firestore": {
@@ -219,6 +234,10 @@
     "/users/{uid}/studyLogs/{logId}": {
       "schema": { "$ref": "#/entities/StudyLogEntry" },
       "description": "Private student daily study log entries for the active term"
+    },
+    "/users/{uid}/stickyNotes/{noteId}": {
+      "schema": { "$ref": "#/entities/StickyNote" },
+      "description": "Private student planner sticky notes (subject-specific reset per term, general persists)"
     },
     "/resources/{resourceId}": {
       "schema": { "$ref": "#/entities/Resource" },
