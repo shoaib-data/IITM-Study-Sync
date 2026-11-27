@@ -329,7 +329,7 @@ export const StartNewTermView: React.FC<StartNewTermViewProps> = ({ onTermStarte
             Starting a new term will automatically archive your previous term (<code className="bg-amber-100/70 dark:bg-amber-900/60 px-1 py-0.5 rounded">isActive: false</code>). Its scores and weekly records are preserved in <strong>Course History</strong>.
           </div>
           <div className="text-amber-800 dark:text-amber-300 font-medium pt-0.5">
-            Previous term tasks in your Planner are removed so your task count resets and you have the full 300-task limit available for the new term.
+            Previous term tasks in your Planner and Daily Study Log entries are cleared for the fresh term so your 300-task limit resets, while your permanent <strong>Course History</strong> stays intact.
           </div>
         </div>
       </div>

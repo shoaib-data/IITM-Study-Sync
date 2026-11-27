@@ -257,6 +257,7 @@ function AppContent() {
             onNavigateToNewTerm={() => setActiveTab('newterm')}
             onNavigateToMyTerm={() => setActiveTab('myterm')}
             onNavigateToPlanner={() => setActiveTab('planner')}
+            onNavigateToStudyHistory={() => setActiveTab('history')}
             onSelectFriend={(f) => setInspectingFriend(f)}
           />
         )}

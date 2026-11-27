@@ -1,18 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useSaveStatus } from '../context/SaveStatusContext';
 import {
   subscribeUserTerms,
   subscribeCalendarTerms,
+  subscribeUserCourses,
+  subscribeUserStudyLogs,
+  deleteStudyLogEntry,
   updateCourseFinalGrade,
   deleteUserTerm,
   deleteUserCourse,
 } from '../lib/firestoreService';
-import { UserTerm, UserCourse, CalendarTerm, FinalGrade } from '../types';
+import { UserTerm, UserCourse, CalendarTerm, FinalGrade, StudyLogEntry } from '../types';
+import { getTodayIST } from '../lib/dateUtils';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { FinalGradeBadge } from './FinalGradeBadge';
 import { AddPastTermModal } from './AddPastTermModal';
+import { StudyLogEntryRow } from './StudyLogEntryRow';
 import {
   Clock,
   ChevronDown,
@@ -23,11 +28,19 @@ import {
   Trash2,
   Calendar,
   AlertTriangle,
+  BookOpenCheck,
+  Filter,
 } from 'lucide-react';
 
 export const CourseHistoryView: React.FC = () => {
   const { currentUser } = useAuth();
   const { triggerSaving, triggerSaved, triggerError } = useSaveStatus();
+
+  const [activeSubTab, setActiveSubTab] = useState<'study' | 'course'>('study');
+  const [activeTerm, setActiveTerm] = useState<UserTerm | null>(null);
+  const [activeTermCourses, setActiveTermCourses] = useState<UserCourse[]>([]);
+  const [studyLogs, setStudyLogs] = useState<StudyLogEntry[]>([]);
+  const [courseFilter, setCourseFilter] = useState<string>('all');
 
   const [archivedTerms, setArchivedTerms] = useState<UserTerm[]>([]);
   const [calendarTerms, setCalendarTerms] = useState<CalendarTerm[]>([]);
@@ -48,6 +61,9 @@ export const CourseHistoryView: React.FC = () => {
   useEffect(() => {
     if (!currentUser) return;
     const unsub = subscribeUserTerms(currentUser.uid, (allTerms) => {
+      const currentActive = allTerms.find((t) => t.isActive) || null;
+      setActiveTerm(currentActive);
+
       const archived = allTerms.filter((t) => !t.isActive);
       // Sort with latest terms first
       archived.sort(
@@ -60,6 +76,62 @@ export const CourseHistoryView: React.FC = () => {
     });
     return () => unsub();
   }, [currentUser]);
+
+  // Subscribe to active term's courses (for Study History filter options)
+  useEffect(() => {
+    if (!currentUser || !activeTerm) {
+      setActiveTermCourses([]);
+      return;
+    }
+    const unsub = subscribeUserCourses(currentUser.uid, activeTerm.termId, (cList) => {
+      setActiveTermCourses(cList);
+    });
+    return () => unsub();
+  }, [currentUser, activeTerm]);
+
+  // Subscribe to current term's Daily Study Log entries
+  useEffect(() => {
+    if (!currentUser || !activeTerm) {
+      setStudyLogs([]);
+      return;
+    }
+    const unsub = subscribeUserStudyLogs(currentUser.uid, activeTerm.termId, (logs) => {
+      setStudyLogs(logs);
+    });
+    return () => unsub();
+  }, [currentUser, activeTerm]);
+
+  const todayIST = getTodayIST();
+
+  const filterCourseOptions = useMemo(() => {
+    const names = new Set<string>();
+    activeTermCourses.forEach((c) => {
+      if (c.name) names.add(c.name);
+    });
+    studyLogs.forEach((l) => {
+      if (l.courseName && l.courseName !== 'General') {
+        names.add(l.courseName);
+      }
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [activeTermCourses, studyLogs]);
+
+  const filteredStudyLogs = useMemo(() => {
+    if (courseFilter === 'all') return studyLogs;
+    return studyLogs.filter((l) => l.courseName === courseFilter);
+  }, [studyLogs, courseFilter]);
+
+  const handleDeleteStudyLog = async (logId: string) => {
+    if (!currentUser) return;
+    triggerSaving();
+    try {
+      await deleteStudyLogEntry(currentUser.uid, logId);
+      triggerSaved();
+    } catch (err) {
+      triggerError('Failed to delete study entry');
+      console.error(err);
+    }
+  };
 
   // Subscribe to calendar terms
   useEffect(() => {
@@ -166,7 +238,127 @@ export const CourseHistoryView: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* Segmented Toggle Bar: Study History (Default) vs Course History */}
+      <div className="flex items-center justify-between">
+        <div
+          role="tablist"
+          aria-label="History view toggle"
+          className="inline-flex p-1 rounded-xl bg-zinc-200/70 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs"
+        >
+          <button
+            id="subtab-study-history"
+            role="tab"
+            type="button"
+            aria-selected={activeSubTab === 'study'}
+            onClick={() => setActiveSubTab('study')}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+              activeSubTab === 'study'
+                ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-xs'
+                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
+            }`}
+          >
+            <BookOpenCheck className="w-4 h-4" />
+            <span>Study History</span>
+          </button>
+
+          <button
+            id="subtab-course-history"
+            role="tab"
+            type="button"
+            aria-selected={activeSubTab === 'course'}
+            onClick={() => setActiveSubTab('course')}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+              activeSubTab === 'course'
+                ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-xs'
+                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
+            }`}
+          >
+            <History className="w-4 h-4" />
+            <span>Course History</span>
+          </button>
+        </div>
+      </div>
+
+      {activeSubTab === 'study' ? (
+        <div className="space-y-6">
+          {/* Study History Header Banner */}
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300 shrink-0">
+                  <BookOpenCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+                    Study History
+                  </h1>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                    {activeTerm
+                      ? `Complete daily study log for ${activeTerm.termName} (${studyLogs.length} ${studyLogs.length === 1 ? 'entry' : 'entries'})`
+                      : 'Start a term to track your daily study sessions.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Optional Course Filter */}
+              {activeTerm && (
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <Filter className="w-3.5 h-3.5 text-zinc-400" />
+                  <select
+                    id="study-history-course-filter"
+                    value={courseFilter}
+                    onChange={(e) => setCourseFilter(e.target.value)}
+                    aria-label="Filter study history by course"
+                    className="text-xs px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 focus:outline-hidden focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 cursor-pointer"
+                  >
+                    <option value="all">All Courses ({studyLogs.length})</option>
+                    <option value="General">General</option>
+                    {filterCourseOptions.map((cName) => (
+                      <option key={cName} value={cName}>
+                        {cName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Study History Entries List */}
+          {filteredStudyLogs.length === 0 ? (
+            <div className="bg-white dark:bg-zinc-900 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl p-10 text-center max-w-lg mx-auto space-y-3">
+              <div className="w-12 h-12 rounded-full bg-zinc-50 dark:bg-zinc-800 text-zinc-400 flex items-center justify-center mx-auto">
+                <BookOpenCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-zinc-800 dark:text-zinc-200">
+                  {studyLogs.length === 0
+                    ? 'No Study Entries Logged Yet'
+                    : 'No Entries Match Selected Course'}
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                  {studyLogs.length === 0
+                    ? 'Log what you study each day from the "Todays Study Log" card on your Dashboard to build your term log.'
+                    : 'Try switching back to "All Courses" to view your other logged study sessions.'}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredStudyLogs.map((entry) => (
+                <StudyLogEntryRow
+                  key={entry.id}
+                  entry={entry}
+                  todayIST={todayIST}
+                  onDelete={handleDeleteStudyLog}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-8">
       {/* Header Banner */}
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -598,6 +790,8 @@ export const CourseHistoryView: React.FC = () => {
         calendarTerms={calendarTerms}
         onTermAdded={handleTermAdded}
       />
+        </div>
+      )}
     </div>
   );
 };

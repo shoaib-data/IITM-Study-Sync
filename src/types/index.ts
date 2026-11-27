@@ -208,3 +208,15 @@ export interface UserTask {
   createdAt: string;
 }
 
+export interface StudyLogEntry {
+  id: string;
+  termId: string;
+  date: string; // "YYYY-MM-DD", India date
+  courseId?: string;
+  courseName: string;
+  courseColor?: string;
+  summary: string;
+  createdAt: string;
+}
+
+

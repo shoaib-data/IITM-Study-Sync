@@ -28,6 +28,7 @@ import {
   FinalGrade,
   AssessmentType,
   UserTask,
+  StudyLogEntry,
 } from '../types';
 import { INITIAL_COURSE_CATALOG, INITIAL_CALENDAR_TERMS, COURSE_COLORS } from './constants';
 
@@ -543,8 +544,9 @@ export async function startNewTerm(
 
     await batch.commit();
 
-    // 5. Remove previous term tasks from users/{uid}/tasks so limit resets to 300
+    // 5. Remove previous term tasks & study logs so fresh term starts clean
     await clearUserTasks(uid);
+    await clearUserStudyLogs(uid);
 
     return termId;
   } catch (err) {
@@ -1133,5 +1135,103 @@ export async function clearUserTasks(uid: string): Promise<void> {
     handleFirestoreError(err, OperationType.DELETE, path);
   }
 }
+
+// --- Daily Study Log ---
+
+export function subscribeUserStudyLogs(
+  uid: string,
+  termId: string | null | undefined,
+  callback: (logs: StudyLogEntry[]) => void
+): () => void {
+  const path = `users/${uid}/studyLogs`;
+  const logsRef = collection(db, 'users', uid, 'studyLogs');
+  return onSnapshot(
+    logsRef,
+    (snapshot) => {
+      const logs: StudyLogEntry[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Omit<StudyLogEntry, 'id'>;
+        if (termId && data.termId !== termId) {
+          return;
+        }
+        logs.push({
+          id: docSnap.id,
+          ...data,
+        });
+      });
+      // Sort newest first by createdAt (falling back to date)
+      logs.sort((a, b) => {
+        const createdDiff = (b.createdAt || '').localeCompare(a.createdAt || '');
+        if (createdDiff !== 0) return createdDiff;
+        return (b.date || '').localeCompare(a.date || '');
+      });
+      callback(logs);
+    },
+    (err) => {
+      handleFirestoreError(err, OperationType.LIST, path);
+    }
+  );
+}
+
+export async function addStudyLogEntry(
+  uid: string,
+  entry: Omit<StudyLogEntry, 'id'>
+): Promise<string> {
+  const path = `users/${uid}/studyLogs`;
+  try {
+    const logsRef = collection(db, 'users', uid, 'studyLogs');
+    const newDocRef = doc(logsRef);
+    const cleaned = removeUndefinedFields({
+      termId: entry.termId,
+      date: entry.date,
+      courseId: entry.courseId || undefined,
+      courseName: entry.courseName || 'General',
+      courseColor: entry.courseColor || undefined,
+      summary: entry.summary.trim().slice(0, 500),
+      createdAt: entry.createdAt || new Date().toISOString(),
+    });
+    await setDoc(newDocRef, cleaned);
+    return newDocRef.id;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, path);
+    throw err;
+  }
+}
+
+export async function deleteStudyLogEntry(uid: string, logId: string): Promise<void> {
+  const path = `users/${uid}/studyLogs/${logId}`;
+  try {
+    await deleteDoc(doc(db, 'users', uid, 'studyLogs', logId));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  }
+}
+
+/**
+ * Removes all study log entries for a user when starting a new term.
+ * Does not touch archived Course History records.
+ */
+export async function clearUserStudyLogs(uid: string): Promise<void> {
+  const path = `users/${uid}/studyLogs`;
+  try {
+    const logsRef = collection(db, 'users', uid, 'studyLogs');
+    const logsSnap = await getDocs(logsRef);
+    if (logsSnap.empty) return;
+
+    const logDocs = logsSnap.docs;
+    const CHUNK_SIZE = 400;
+    for (let i = 0; i < logDocs.length; i += CHUNK_SIZE) {
+      const deleteBatch = writeBatch(db);
+      const chunk = logDocs.slice(i, i + CHUNK_SIZE);
+      chunk.forEach((d) => {
+        deleteBatch.delete(d.ref);
+      });
+      await deleteBatch.commit();
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  }
+}
+
 
 

@@ -9,8 +9,11 @@ import {
   subscribeFriendsList,
   subscribeUserTasks,
   updateUserTask,
+  subscribeUserStudyLogs,
+  addStudyLogEntry,
+  deleteStudyLogEntry,
 } from '../lib/firestoreService';
-import { UserTerm, UserCourse, CalendarTerm, UserProfile, UserTask } from '../types';
+import { UserTerm, UserCourse, CalendarTerm, UserProfile, UserTask, StudyLogEntry } from '../types';
 import { calculateTermWeek, formatDateString, getTodayIST, getMsUntilNextMidnightIST } from '../lib/dateUtils';
 import { ChecklistIconToggle } from './ChecklistIconToggle';
 import { CourseActionMenu } from './CourseActionMenu';
@@ -18,6 +21,7 @@ import { ReplaceCourseModal } from './ReplaceCourseModal';
 import { UserAvatar } from './UserAvatar';
 import { ExamCountdownCard } from './ExamCountdownCard';
 import { TodayTasksCard } from './TodayTasksCard';
+import { StudyLogCard } from './StudyLogCard';
 import {
   Calendar as CalendarIcon,
   ChevronRight,
@@ -35,6 +39,7 @@ interface DashboardViewProps {
   onNavigateToNewTerm: () => void;
   onNavigateToMyTerm: () => void;
   onNavigateToPlanner?: () => void;
+  onNavigateToStudyHistory?: () => void;
   onSelectFriend: (friend: UserProfile) => void;
 }
 
@@ -51,6 +56,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigateToNewTerm,
   onNavigateToMyTerm,
   onNavigateToPlanner,
+  onNavigateToStudyHistory,
   onSelectFriend,
 }) => {
   const { currentUser, userProfile } = useAuth();
@@ -65,6 +71,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Today's tasks state & IST date tracker
   const [tasks, setTasks] = useState<UserTask[]>([]);
+  const [studyLogs, setStudyLogs] = useState<StudyLogEntry[]>([]);
   const [todayIST, setTodayIST] = useState<string>(() => getTodayIST());
 
   // Keep today's date fresh in IST and recompute at midnight IST if tab stays open
@@ -154,6 +161,55 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     });
     return () => unsubCourses();
   }, [currentUser, activeTerm]);
+
+  // Subscribe to current term's Daily Study Log entries
+  useEffect(() => {
+    if (!currentUser || !activeTerm) {
+      setStudyLogs([]);
+      return;
+    }
+    const unsubLogs = subscribeUserStudyLogs(currentUser.uid, activeTerm.termId, (logList) => {
+      setStudyLogs(logList);
+    });
+    return () => unsubLogs();
+  }, [currentUser, activeTerm]);
+
+  const handleAddStudyLog = async (params: {
+    courseId?: string;
+    courseName: string;
+    courseColor?: string;
+    summary: string;
+  }) => {
+    if (!currentUser || !activeTerm) return;
+    triggerSaving();
+    try {
+      await addStudyLogEntry(currentUser.uid, {
+        termId: activeTerm.termId,
+        date: todayIST,
+        courseId: params.courseId,
+        courseName: params.courseName,
+        courseColor: params.courseColor,
+        summary: params.summary,
+        createdAt: new Date().toISOString(),
+      });
+      triggerSaved();
+    } catch (err) {
+      triggerError('Failed to save study entry');
+      console.error(err);
+    }
+  };
+
+  const handleDeleteStudyLog = async (logId: string) => {
+    if (!currentUser) return;
+    triggerSaving();
+    try {
+      await deleteStudyLogEntry(currentUser.uid, logId);
+      triggerSaved();
+    } catch (err) {
+      triggerError('Failed to delete study entry');
+      console.error(err);
+    }
+  };
 
   // Find matching calendar doc for active term
   const matchedCalendar = calendarTerms.find((c) => c.termId === activeTerm?.calendarId);
@@ -497,6 +553,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 })}
               </div>
             )}
+
+            {/* What I Studied Today (Daily Study Log) */}
+            <StudyLogCard
+              courses={courses}
+              entries={studyLogs}
+              todayIST={todayIST}
+              onAddEntry={handleAddStudyLog}
+              onDeleteEntry={handleDeleteStudyLog}
+              onViewFullHistory={() => onNavigateToStudyHistory?.()}
+            />
 
             {/* Academic Milestones quick bar - OPPE windows only */}
             {matchedCalendar && (

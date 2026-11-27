@@ -194,12 +194,31 @@
         "createdAt": { "type": "string" }
       },
       "required": ["title", "date", "done", "createdAt"]
+    },
+    "StudyLogEntry": {
+      "title": "StudyLogEntry",
+      "description": "Daily study log entry for an active term",
+      "type": "object",
+      "properties": {
+        "termId": { "type": "string", "description": "Active term ID" },
+        "date": { "type": "string", "description": "India date YYYY-MM-DD" },
+        "courseId": { "type": "string" },
+        "courseName": { "type": "string" },
+        "courseColor": { "type": "string" },
+        "summary": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["termId", "date", "courseName", "summary", "createdAt"]
     }
   },
   "firestore": {
     "/users/{uid}/tasks/{taskId}": {
       "schema": { "$ref": "#/entities/UserTask" },
       "description": "Private student planner task documents"
+    },
+    "/users/{uid}/studyLogs/{logId}": {
+      "schema": { "$ref": "#/entities/StudyLogEntry" },
+      "description": "Private student daily study log entries for the active term"
     },
     "/resources/{resourceId}": {
       "schema": { "$ref": "#/entities/Resource" },
